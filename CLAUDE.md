@@ -48,8 +48,9 @@ UI가 생기면 설정(또는 정보) 화면에 **"업데이트 히스토리"** 
 
 ```
 docs/
-  prd/           # PRD, 스펙 (TXTSpace/TXTDiary 참조 PRD 포함)
-  architecture/  # 아키텍처 문서 (TXT 패밀리 마스터)
+  prd/           # PRD, 스펙 (TXTMyWorld PRD·통합 스펙, TXTSpace/TXTDiary 참조 PRD)
+  architecture/  # 아키텍처 문서 (TXTMyWorld 아키텍처, TXT 패밀리 마스터)
+  roadmap/       # 로드맵 (버전 마일스톤)
   context/       # 시리즈 개요·배경 맥락
   storyboard/    # 스토리보드
   handoff/       # 작업지시서
