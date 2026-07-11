@@ -4,9 +4,9 @@
 
 ## 프로젝트 한 줄 정의
 
-TXTMyWorld = **TXT 패밀리의 최종 레이어(가칭)**. 세 맥락(개인 기억·문서 지식·AI 대화)을 가로질러 연관을 찾고 새 맥락을 **생성**하는 "잇기·만들기" 앱. TXTSpace(보기)의 상위.
+TXTMyWorld = **TXT 패밀리의 최종 레이어** (이름 확정). 세 맥락(개인 기억·문서 지식·AI 대화)의 키워드를 **기간·빈도·벡터(의미)**로 조합해 연관을 찾고 새 맥락을 **생성**하는 "잇기·만들기" 앱. TXTSpace(보기)의 상위. **벡터·의미 검색이 핵심 축.**
 
-- 상태: 착수 전. 전용 PRD 미작성.
+- 상태: 착수 전. v0.1 PRD 초안 작성됨(`docs/prd/prd_20260712_txtmyworld-v0-1_claudecode.md`).
 - 전체 파악 시작점: `docs/context/README_txt-series-overview_20260712.md`
 - 상위 규약: `docs/architecture/masterspec_20260709_txt-family-master_yumi.md`
 
