@@ -26,8 +26,15 @@ TXTAIMemory (AI 대화) ─┘
 
 프로젝트 규칙·버전 정책은 [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) / [`VERSIONING.md`](VERSIONING.md) 참조.
 
+## PRD
+
+- [`docs/prd/prd_20260712_txtmyworld-v0-1_claudecode.md`](docs/prd/prd_20260712_txtmyworld-v0-1_claudecode.md) — TXTMyWorld v0.1 PRD 초안
+  - 핵심: 세 소스 키워드를 **기간·빈도·벡터**로 조합해 새 주제를 발견·생성
+  - 방향: 하이브리드 발견 · 주제 카드+환류 · 로컬 우선+동의형 클라우드 · 독립 앱
+
 ## 다음 할 일
 
-- [ ] TXTMyWorld 전용 PRD 초안 (패밀리 마스터 §2.1·§3 기반)
-- [ ] 앱 이름 확정 (현재 가칭)
+- [x] TXTMyWorld 전용 PRD 초안 (패밀리 마스터 §2.1·§3 기반)
+- [ ] 앱 이름 확정 (현재 가칭 — PRD §16 D0)
+- [ ] 벡터 소스 확정: 로컬 자체 임베딩 vs 공통 API 벡터 확장 (PRD §16 D1)
 - [ ] 상위 3축 + TXTSpace 규격 준비 상태 점검
