@@ -33,6 +33,21 @@ TXTAIMemory (AI 대화) ─┘
   - **벡터·의미 검색이 핵심 축** — RC까지 최종에 가깝게 설계 (PRD §3.4)
   - 방향: 하이브리드 발견 · 주제 카드+환류 · 로컬 우선+동의형 클라우드 · 독립 앱
 
+## 코어 엔진 (`core/`)
+
+Rust 크레이트 `txtmyworld-core` — 주요 로직 구현 완료 (테스트 26/26, clippy 클린).
+
+- `models` 공통 스키마 v1.0/v1.1 파싱·방어 · `source` 통합 조회·병합·폴백(X1 소비)
+- `embedding` bge-m3(Ollama)·전략 A/B 선택 · `vector` KNN·공간 정합
+- `discovery` 3축 융합(브리지/갭/클러스터/드리프트)+근거 문장 · `topic` 주제 카드
+- `feedback` X2 환류 페이로드(멱등·본문 미포함) · `store` SQLite 저장소
+
+```
+cd core && cargo test
+```
+
+남은 작업(Tauri 셸·UI·sqlite-vec·실연동)은 [작업지시서 §10](docs/handoff/handoff_20260712_txtmyworld-sprint0-1_claudecode.md) 인계 노트 참조.
+
 ## 다음 할 일
 
 - [x] TXTMyWorld 전용 PRD 초안 (패밀리 마스터 §2.1·§3 기반)

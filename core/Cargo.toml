@@ -1,0 +1,16 @@
+# core/Cargo.toml — TXTMyWorld 코어 엔진 크레이트 (Tauri src-tauri가 path 의존으로 사용)
+[package]
+name = "txtmyworld-core"
+version = "0.1.0"
+edition = "2021"
+description = "TXTMyWorld core engine: schema parsing (v1.0/v1.1), vector KNN, 3-axis fusion discovery, topic cards, X2 feedback payload"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+ureq = { version = "2", features = ["json"] }
+thiserror = "1"

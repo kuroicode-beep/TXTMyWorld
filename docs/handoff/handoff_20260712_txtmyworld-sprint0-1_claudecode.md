@@ -1,6 +1,8 @@
 # TXTMyWorld 작업지시서 — Sprint 0~1 (착수)
 
-문서 버전: v0.1 / 작성일: 2026-07-12 / 작성자: Claude Code (SVIL) / 대상: Cursor(구현)·Codex(QA)
+문서 버전: v0.2 / 작성일: 2026-07-12 (갱신) / 작성자: Claude Code (SVIL) / 대상: Cursor·Sonnet(구현)·Codex(QA)
+
+> **[구현 현황 v0.2]** 코어 엔진이 `core/`(Rust 크레이트 `txtmyworld-core`)로 **구현 완료** — 테스트 26/26 통과, clippy 클린. 아래 표의 ✅ 항목은 코어 레벨에서 끝났고, 남은 것은 Tauri 앱 셸·UI·실연동이다. §10 인계 노트 참조.
 
 > 상위: PRD(v0.3), 통합 스펙(X1/X2), 아키텍처, 로드맵, 스토리보드. 본 문서는 **착수 스프린트의 실행 단위**다. 스택 Tauri + React + Rust, Windows 우선. 코드 규칙: 파일 경로 주석, 함수 상단 한 줄 주석, DRY, 에러 핸들링, 민감정보 노출 금지(CLAUDE.md §8).
 
@@ -90,6 +92,39 @@
 - bge-m3 배포 형식(Ollama pull vs 번들).
 - 추천 피드 계산 주기·재색인 트리거.
 
+## 10. 인계 노트 — 코어 엔진 구현 완료 (2026-07-12, Claude Code → Sonnet)
+
+**위치:** `core/` — Rust 라이브러리 크레이트 `txtmyworld-core`. Tauri `src-tauri`가 path 의존으로 사용하면 된다. `cargo test` 26/26 통과, `cargo clippy` 경고 0.
+
+**코어에서 구현 완료 (✅):**
+
+| 지시 항목 | 모듈 | 내용 |
+|--------|-----|-----|
+| 1.2 /health 파서 ✅ | `models.rs`, `source.rs` | schema v1.0/v1.1, `vector_capability` 감지, 방어(상위 major→UpdateRequired) |
+| 1.3 /keywords 파싱·병합 ✅ | `source.rs` | 소스별 별도 항목·결정적 순서 병합(`merge_keywords`), HTTP GET 클라이언트(read-only) |
+| 1.4 /vectors 파싱 ✅ | `source.rs` | X1 배치·증분(`since`/`cursor`), dim 불일치 레코드 스킵(비중단) |
+| 1.5/1.6 폴백·방어 ✅ | `source.rs` | `SourceFetch::{Ok,UpdateRequired,Offline}` 소스 단위 격리 |
+| 2.1 임베딩 런타임 ✅ | `embedding.rs` | `Embedder` 트레이트 + `OllamaEmbedder`(bge-m3, /api/embed) + `HashEmbedder`(테스트용) |
+| 2.2 임베딩 저장 ✅ | `store.rs` | embeddings 테이블(source/origin/model/dim 태깅, BLOB 왕복) |
+| 2.3 KNN ✅ | `vector.rs` | `VectorStore` 트레이트 + 인메모리 브루트포스(결정적) — sqlite-vec은 동일 트레이트로 교체 |
+| 2.4 공간 정합 ✅ | `vector.rs`, `embedding.rs` | `VectorSpace::is_compatible` + `choose_strategy`(UseShared/RealignLocally/LocalOnly) |
+| 2.5/2.6 의미 연산 ✅ | `discovery.rs` | 교차소스 매칭(브리지), 그리디 의미 클러스터, KNN 질의 기반 |
+| 3.1~3.3 발견 엔진 ✅ | `discovery.rs` | 융합 스코어(w 0.6/0.2/0.2), 브리지/갭/클러스터/드리프트, 약한 신호 라벨, **근거 한국어 완전 문장**(`evidence_sentence`) |
+| 5.2 X2 페이로드 ✅ | `feedback.rs`, `topic.rs` | payload_schema v1.0, `external_id` 멱등, 본문 미포함 검증 테스트 |
+| 저장소 ✅ | `store.rs` | PRD §8 전 테이블 DDL + 캐시/임베딩/발견/카드(soft delete)/환류 이력/설정 CRUD |
+
+**Sonnet이 이어서 할 것 (미구현):**
+
+1. **0.1 Tauri+React 앱 셸** — `src-tauri` 생성, `txtmyworld-core` path 의존, IPC commands로 코어 노출.
+2. **0.4/4.x UI** — 피드(S1)·상세(S2)·카드 생성(S3)·탐색(S4)·보관함(S5)·설정(S6), 리스트 뷰 동등성(코어의 `evidence_sentence` 활용), 키보드·고대비.
+3. **sqlite-vec 통합** — `vector.rs`의 `VectorStore` 트레이트 구현체 추가(현 인메모리는 v0.1 규모에 충분).
+4. **1.1 페어링 UI + OS 보안 저장소** — 토큰은 keyring 등으로, 코어 `SourceConfig.pairing_token`에 주입.
+5. **5.1/5.3 환류 실연동** — MCP 클라이언트 호출부(코어는 페이로드·이력까지 제공), 동의 다이얼로그.
+6. **동기화 오케스트레이션** — fetch→merge→embed(증분)→index→discover 파이프라인을 백그라운드 작업으로.
+
+**설계 계약(변경 금지):** 코어 데이터 모델·트레이트는 RC 형태다(PRD §3.4). `VectorStore`/`Embedder` 트레이트, `Discovery`/`TopicCard`/Evidence 구조, X2 페이로드 스키마를 바꾸지 말고 구현체만 추가할 것.
+
 ## 9. 변경 이력
 
 * v0.1 (2026-07-12, Claude Code): 최초 작성. Sprint 0~1 실행 단위, X1 소비·벡터 엔진·발견·생성·X2 환류·QA 체크리스트.
+* v0.2 (2026-07-12, Claude Code): 코어 엔진(`core/`) 구현 완료 반영 — 구현 현황·인계 노트(§10) 추가.
