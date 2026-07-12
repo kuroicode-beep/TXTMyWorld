@@ -1,0 +1,32 @@
+[package]
+name = "app"
+version = "0.1.0"
+description = "TXTMyWorld — TXT 패밀리 연결·생성 레이어"
+authors = ["SVIL"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+# 코어 엔진 — schema 파싱/벡터/발견/카드/환류/저장소 (RC 데이터 모델, 구현체만 추가)
+txtmyworld-core = { path = "../../core", features = ["sqlitevec"] }
+# 페어링 토큰 OS 보안 저장소 (Windows Credential Manager 등)
+keyring = "4"
+sha2 = "0.10"
+ureq = { version = "2", features = ["json"] }

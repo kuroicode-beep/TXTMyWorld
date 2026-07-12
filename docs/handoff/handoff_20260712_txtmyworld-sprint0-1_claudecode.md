@@ -1,8 +1,8 @@
 # TXTMyWorld 작업지시서 — Sprint 0~1 (착수)
 
-문서 버전: v0.2 / 작성일: 2026-07-12 (갱신) / 작성자: Claude Code (SVIL) / 대상: Cursor·Sonnet(구현)·Codex(QA)
+문서 버전: v0.3 / 작성일: 2026-07-12 (갱신) / 작성자: Claude Code → Claude Sonnet 5 (SVIL) / 대상: Codex(QA)·후속 세션
 
-> **[구현 현황 v0.2]** 코어 엔진이 `core/`(Rust 크레이트 `txtmyworld-core`)로 **구현 완료** — 테스트 26/26 통과, clippy 클린. 아래 표의 ✅ 항목은 코어 레벨에서 끝났고, 남은 것은 Tauri 앱 셸·UI·실연동이다. §10 인계 노트 참조.
+> **[구현 현황 v0.3]** 코어 엔진(`core/`) + Tauri 데스크톱 앱(`app/`) **모두 구현 완료** — core 테스트 33/33, app 테스트 통과, `cargo clippy` 경고 0, 프론트엔드 `tsc`+`vite build` 클린, 실제 렌더링 확인(Vite dev 서버로 4개 탭 전환·에러 없음 검증). §11 Sonnet 완료 보고 참조. 남은 것은 패밀리 차원 협의(X1-a/X2-a)와 실서버 연동 검증뿐이다.
 
 > 상위: PRD(v0.3), 통합 스펙(X1/X2), 아키텍처, 로드맵, 스토리보드. 본 문서는 **착수 스프린트의 실행 단위**다. 스택 Tauri + React + Rust, Windows 우선. 코드 규칙: 파일 경로 주석, 함수 상단 한 줄 주석, DRY, 에러 핸들링, 민감정보 노출 금지(CLAUDE.md §8).
 
@@ -124,7 +124,35 @@
 
 **설계 계약(변경 금지):** 코어 데이터 모델·트레이트는 RC 형태다(PRD §3.4). `VectorStore`/`Embedder` 트레이트, `Discovery`/`TopicCard`/Evidence 구조, X2 페이로드 스키마를 바꾸지 말고 구현체만 추가할 것.
 
+## 11. Sonnet 구현 완료 보고 (2026-07-12, Claude Sonnet 5)
+
+§10 인계 노트의 "Sonnet이 이어서 할 것" 6개 항목을 전부 구현했다. 위치는 `app/`(Tauri 2 + React 19 + TS).
+
+| 인계 항목 | 구현 위치 | 비고 |
+|---------|---------|-----|
+| 1. Tauri+React 앱 셸 | `app/src-tauri`, `app/src` | `txtmyworld-core`를 path 의존(feature `sqlitevec`)으로 연결. 창 제목에 `TXTMyWorld vX.Y.Z` 상시 표시(0.1 §0.1 기준 충족) |
+| 2. UI(S0~S6) | `app/src/screens/*`, `app/src/components/*` | Onboarding(S0)·Feed(S1)·발견상세는 DiscoveryCard에 내장(S2)·AdoptModal(S3)·Explore(S4)·Archive(S5)·Settings(S6, 버전+업데이트 히스토리 포함). 다크·고대비 기본, 최소 폰트 16px, 터치 타겟 50px, 색+텍스트 라벨 병행, 리스트 뷰만으로 전 정보 접근(그래프 뷰는 미구현 — MoSCoW Should라 v0.1 범위 밖으로 명시적 스코프 아웃) |
+| 3. sqlite-vec 통합 | `core/src/vector_sqlite.rs` (feature `sqlitevec`) | `VectorStore` 트레이트 구현체. `vec0` 가상 테이블 + KNN(`MATCH ... AND k = ?`), L2→코사인 환산. 테스트 2건 포함. `pipeline.rs`의 `run_discovery`가 실제로 이 구현체를 사용(인메모리, 발견 실행마다 조립) |
+| 4. 페어링 UI + OS 보안 저장소 | `app/src-tauri/src/secure.rs`, `commands.rs::pair_source` | `keyring` 크레이트(Windows Credential Manager 등). 토큰 원문은 keyring에만, SQLite에는 SHA-256 지문만 저장(코드에 자체 구현 대신 `sha2` 크레이트 사용 — 해시를 손수 구현했다가 검증 부담이 커서 표준 크레이트로 교체) |
+| 5. 환류 실연동 | `app/src-tauri/src/feedback_client.rs`, `commands.rs::send_feedback` | `FeedbackTransport` 트레이트 + `HttpFeedbackTransport`(로컬 HTTP POST). **X2-a(AIMemory 실제 수신 프로토콜) 미확정이라 최선의 임시 구현** — MCP stdio 클라이언트가 아니라 설정 가능한 HTTP 엔드포인트로 payload_schema v1.0을 전송한다. 트레이트로 분리해 두었으니 실제 프로토콜 확정 시 구현체만 교체하면 됨. 미연결 시 이력에 `offline`으로 기록, 앱 비중단 |
+| 6. 동기화 오케스트레이션 | `app/src-tauri/src/pipeline.rs` | `sync_source`/`sync_all`(fetch→merge→upsert, X1 벡터는 공간 정합 확인 후에만 수용) + `run_discovery`(증분 임베딩→sqlite-vec 색인→3유형 발견→영속화). `seed_demo_data`로 실 소스 없이도 전체 루프 체험 가능(명시적 라벨링, PRD 예시 키워드 재사용) |
+
+**개발 중 발견해 고친 버그 2건 (설계 리뷰 가치):**
+
+1. `run_discovery`에서 신규 임베딩 대상(`pending_texts`/`pending_keys`)을 계산한 뒤, 벡터를 다시 레코드에 매핑할 때 전체 `records` 리스트와 `zip`했던 실수 — 인덱스가 어긋나 엉뚱한 키워드에 임베딩이 붙을 뻔했다. `pending_records`를 별도로 모아 짝을 맞춰 수정.
+2. `sync_source`가 X1 벡터를 검증 없이 그대로 저장했던 부분 — 소스가 로컬 기준과 다른 임베딩 모델/차원을 보내면 `sqlite-vec` 고정 차원 테이블이 깨질 수 있었다. `VectorSpace::is_compatible`로 정합 확인 후에만 저장하고, 불일치 시 조용히 건너뛰어 발견 단계의 로컬 재임베딩(전략 B)으로 자연스럽게 폴백하게 했다.
+
+**검증 방법:** `cargo test`(core 33/33, app 1/1) · `cargo clippy --all-targets`(core/app 모두 경고 0) · `npx tsc --noEmit` · `npm run build`(vite) · Vite dev 서버(`http://localhost:1420`)를 브라우저 프리뷰로 열어 온보딩→발견→탐색→보관함→설정 4개 탭 전환과 콘솔 에러 0건 확인. 백엔드 IPC가 없는 순수 브라우저 환경이라 `invoke()` 호출은 실패하지만, 모든 화면이 크래시 없이 우아하게 폴백(토스트 안내)하는 것도 함께 확인했다 — 이 과정에서 Settings 화면이 API 실패 시 "불러오는 중…"에 무한히 갇히는 회복성 버그를 찾아 고쳤다(개별 요청 catch + 기본값 폴백).
+
+**아직 남은 것 (패밀리 차원 협의 필요, 코드 문제 아님):**
+
+* **X1-a** — 공통 API 벡터 공유 확장(schema v1.1)을 마스터·3축 앱이 실제로 구현해야 소스측 공유(전략 A)가 살아난다. 지금은 로컬 재임베딩(전략 B)으로 전 기능 동작.
+* **X2-a** — TXTAIMemory의 실제 MCP 수신 방식(stdio JSON-RPC vs 로컬 HTTP 게이트웨이) 확정. 지금은 임시 HTTP 브리지.
+* 실서버(TXTDiary 등) 대상 페어링·동기화 E2E 검증 — 이 환경엔 실행 중인 TXT 패밀리 서버가 없어 코드 경로만 정적으로 검증했다.
+* 2D 관계 뷰(그래프), HNSW 승격, msi/nsis 패키징 — MoSCoW Should/후속 범위로 의도적으로 남김.
+
 ## 9. 변경 이력
 
 * v0.1 (2026-07-12, Claude Code): 최초 작성. Sprint 0~1 실행 단위, X1 소비·벡터 엔진·발견·생성·X2 환류·QA 체크리스트.
 * v0.2 (2026-07-12, Claude Code): 코어 엔진(`core/`) 구현 완료 반영 — 구현 현황·인계 노트(§10) 추가.
+* v0.3 (2026-07-12, Claude Sonnet 5): Tauri 앱(`app/`) 구현 완료 반영 — §11 Sonnet 완료 보고 추가(파일 위치·발견한 버그 2건·검증 방법·남은 패밀리 협의 항목).

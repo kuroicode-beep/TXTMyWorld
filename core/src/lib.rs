@@ -18,6 +18,8 @@ pub mod source;
 pub mod store;
 pub mod topic;
 pub mod vector;
+#[cfg(feature = "sqlitevec")]
+pub mod vector_sqlite;
 
 /// 앱 버전 단일 소스(루트 VERSION 파일과 동기 유지)
 pub const APP_VERSION: &str = "0.1.0";
@@ -26,7 +28,8 @@ pub const APP_VERSION: &str = "0.1.0";
 pub const VERSION_HISTORY: &[(&str, &str, &str)] = &[(
     "0.1.0",
     "2026-07-12",
-    "프로젝트 초기화. 코어 엔진(스키마 v1.0/v1.1 파싱, 벡터 KNN, 3축 융합 발견, 주제 카드, X2 페이로드, SQLite 저장소) 구현.",
+    "프로젝트 초기화. 코어 엔진(스키마 v1.0/v1.1 파싱, sqlite-vec KNN, 3축 융합 발견, 주제 카드, X2 페이로드, SQLite 저장소)과 \
+     Tauri 데스크톱 앱(소스 페어링·동기화·발견·보관함·설정 화면, OS 보안 저장소 토큰, 접근성 테마) 구현.",
 )];
 
 /// 코어 공통 에러 타입

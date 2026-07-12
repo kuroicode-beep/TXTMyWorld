@@ -39,6 +39,26 @@ impl SourceId {
             SourceId::Unknown => "알 수 없는 소스",
         }
     }
+
+    /// 안정적인 소문자 문자열 표현 (DB 컬럼 값 등 non-JSON 직렬화 지점에 사용)
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SourceId::TxtDiary => "txtdiary",
+            SourceId::TxtBrain => "txtbrain",
+            SourceId::TxtAiMemory => "txtaimemory",
+            SourceId::Unknown => "unknown",
+        }
+    }
+
+    /// 문자열에서 관대하게 파싱한다 (모르는 값은 Unknown — graceful)
+    pub fn parse_lenient(s: &str) -> Self {
+        match s {
+            "txtdiary" => SourceId::TxtDiary,
+            "txtbrain" => SourceId::TxtBrain,
+            "txtaimemory" => SourceId::TxtAiMemory,
+            _ => SourceId::Unknown,
+        }
+    }
 }
 
 /// /health 응답의 벡터 능력 광고 (X1, schema v1.1)
@@ -256,5 +276,14 @@ mod tests {
         let json = r#"{"schema_version": "1.0", "source": "txtfuture", "keywords": []}"#;
         let resp: KeywordsResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.source, SourceId::Unknown);
+    }
+
+    // as_str/parse_lenient 왕복 및 모르는 문자열의 graceful 처리
+    #[test]
+    fn source_id_str_roundtrip() {
+        for s in [SourceId::TxtDiary, SourceId::TxtBrain, SourceId::TxtAiMemory] {
+            assert_eq!(SourceId::parse_lenient(s.as_str()), s);
+        }
+        assert_eq!(SourceId::parse_lenient("nonsense"), SourceId::Unknown);
     }
 }

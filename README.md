@@ -2,7 +2,7 @@
 
 > TXT 패밀리의 **연결·생성 레이어**. 세 종류의 맥락(개인 기억·문서 지식·AI 대화)을 **기간·빈도·벡터(의미)**로 조합해 연관을 찾고, 새로운 맥락을 만들어내는 개인 지능 생태계의 최종 앱. **벡터·의미 검색이 핵심 축**이다.
 
-현재 버전: `v0.1.0` · 상태: **착수 전 (컨텍스트 정리 단계)**
+현재 버전: `v0.1.0` · 상태: **코어 엔진 + 데스크톱 앱 셸 구현 완료 (v0.1 MVP 마감 단계)**
 
 ## TXT 패밀리 안에서의 위치
 
@@ -35,23 +35,39 @@ TXTAIMemory (AI 대화) ─┘
 
 ## 코어 엔진 (`core/`)
 
-Rust 크레이트 `txtmyworld-core` — 주요 로직 구현 완료 (테스트 26/26, clippy 클린).
+Rust 크레이트 `txtmyworld-core` — 주요 로직 구현 완료 (테스트 33/33, `sqlitevec` feature 포함, clippy 클린).
 
 - `models` 공통 스키마 v1.0/v1.1 파싱·방어 · `source` 통합 조회·병합·폴백(X1 소비)
-- `embedding` bge-m3(Ollama)·전략 A/B 선택 · `vector` KNN·공간 정합
+- `embedding` bge-m3(Ollama)·전략 A/B 선택 · `vector` KNN 트레이트·공간 정합 · `vector_sqlite` **sqlite-vec** 구현체(feature `sqlitevec`)
 - `discovery` 3축 융합(브리지/갭/클러스터/드리프트)+근거 문장 · `topic` 주제 카드
-- `feedback` X2 환류 페이로드(멱등·본문 미포함) · `store` SQLite 저장소
+- `feedback` X2 환류 페이로드(멱등·본문 미포함) · `store` SQLite 저장소(전체 조회 API 포함)
 
 ```
-cd core && cargo test
+cd core && cargo test --features sqlitevec
 ```
 
-남은 작업(Tauri 셸·UI·sqlite-vec·실연동)은 [작업지시서 §10](docs/handoff/handoff_20260712_txtmyworld-sprint0-1_claudecode.md) 인계 노트 참조.
+## 데스크톱 앱 (`app/`)
+
+Tauri 2 + React 19 + TypeScript. `txtmyworld-core`를 path 의존성으로 연결한 실동작 앱 셸.
+
+- **Rust(`app/src-tauri`)**: IPC 커맨드(`commands.rs`), 동기화·발견 오케스트레이션(`pipeline.rs`), 임베더 선택(`embed_select.rs`), X2 HTTP 브리지(`feedback_client.rs`), 페어링 토큰 OS 보안 저장소(`secure.rs`, keyring + SHA-256 지문).
+- **React(`app/src`)**: S0(온보딩·페어링) · S1(피드) · S2(발견 상세, 카드에 내장) · S3(카드 생성 모달) · S4(탐색) · S5(보관함) · S6(설정: 엔진 파라미터·연동·접근성·버전/업데이트 히스토리). 다크·고대비 기본 테마, 최소 폰트 16px, 터치 타겟 50px, 리스트 뷰로 전 정보 접근 가능(그래프 뷰는 v0.1 범위 밖, MoSCoW Should).
+- **데모 모드**: 실 소스 없이도 "데모 데이터로 체험하기"로 발견 루프 전체를 확인 가능.
+
+```
+cd app && npm install
+npm run tauri dev      # 개발 모드 (네이티브 창)
+npm run build           # 프론트엔드 타입체크 + 빌드 검증
+cd src-tauri && cargo test && cargo clippy --all-targets
+```
 
 ## 다음 할 일
 
 - [x] TXTMyWorld 전용 PRD 초안 (패밀리 마스터 §2.1·§3 기반)
 - [x] 앱 이름 확정 → **TXTMyWorld** (PRD §16 D0)
 - [x] 벡터 소스 확정 → 이중 전략(소스측 공유 + 로컬 임베딩), 기본 모델 bge-m3 (PRD §3.4, §16 D1/D2)
-- [ ] 패밀리 협의: 공통 API 벡터 공유 확장(schema v1.1), TXTAIMemory MCP 쓰기 스키마 (PRD §16 X1/X2)
-- [ ] 상위 3축 + TXTSpace 규격 준비 상태 점검
+- [x] 코어 엔진 구현 (스키마·벡터·발견·카드·환류·저장소, sqlite-vec 포함)
+- [x] Tauri 데스크톱 앱 셸 + S0~S6 전 화면 + OS 보안 저장소 + 접근성 테마
+- [ ] 패밀리 협의: 공통 API 벡터 공유 확장(schema v1.1) 소스측 생산자 구현, TXTAIMemory MCP 쓰기 실제 수신 방식 확정 (PRD §16 X1-a/X2-a)
+- [ ] 상위 3축(TXTDiary/TXTBrain/TXTAIMemory) 실서버로 페어링·동기화 실검증
+- [ ] 릴리즈 패키징(msi/nsis) 및 배포 준비

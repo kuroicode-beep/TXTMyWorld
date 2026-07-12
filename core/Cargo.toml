@@ -14,3 +14,8 @@ uuid = { version = "1", features = ["v4", "serde"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 ureq = { version = "2", features = ["json"] }
 thiserror = "1"
+sqlite-vec = { version = "0.1", optional = true }
+
+[features]
+# sqlite-vec ANN 저장소(vector::SqliteVecStore)를 활성화한다. PRD §3.4.3(대규모 승격 경로).
+sqlitevec = ["dep:sqlite-vec"]

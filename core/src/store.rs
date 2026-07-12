@@ -129,7 +129,7 @@ impl Store {
                  text=excluded.text, frequency=excluded.frequency, avg_emotion_score=excluded.avg_emotion_score,
                  first_seen=excluded.first_seen, last_seen=excluded.last_seen, fetched_at=excluded.fetched_at"#,
             params![
-                serde_json::to_string(&rec.source)?.trim_matches('"'),
+                rec.source.as_str(),
                 rec.normalized_text,
                 rec.text,
                 rec.frequency as i64,
@@ -320,6 +320,231 @@ impl Store {
             Ok(None)
         }
     }
+
+    // ---- 아래는 UI 계층(Tauri commands)을 위한 조회 확장. 스키마·기존 시그니처 변경 없음. ----
+
+    /// 캐시된 키워드 전체를 발견 엔진 입력 형태로 로드 (source, normalized_text 순 결정적)
+    pub fn list_keyword_cache(&self) -> Result<Vec<KeywordRecord>> {
+        let mut stmt = self.conn.prepare(
+            r#"SELECT source, text, normalized_text, frequency, avg_emotion_score, first_seen, last_seen
+               FROM keyword_cache ORDER BY source, normalized_text"#,
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let source_str: String = row.get(0)?;
+            let first_seen: Option<String> = row.get(5)?;
+            let last_seen: Option<String> = row.get(6)?;
+            Ok(KeywordRecord {
+                source: crate::models::SourceId::parse_lenient(&source_str),
+                text: row.get(1)?,
+                normalized_text: row.get(2)?,
+                frequency: row.get::<_, i64>(3)? as u64,
+                avg_emotion_score: row.get::<_, f64>(4)? as f32,
+                first_seen: first_seen.and_then(|d| d.parse().ok()),
+                last_seen: last_seen.and_then(|d| d.parse().ok()),
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    /// 발견 후보 전체를 status 필터로 조회 (근거·멤버 포함 완전 역직렬화)
+    pub fn list_discoveries(&self, status: Option<&str>) -> Result<Vec<Discovery>> {
+        let sql = match status {
+            Some(_) => "SELECT id, type, members_json, evidence_json, score, weak_signal FROM discoveries WHERE status=?1 ORDER BY score DESC",
+            None => "SELECT id, type, members_json, evidence_json, score, weak_signal FROM discoveries ORDER BY score DESC",
+        };
+        let mut stmt = self.conn.prepare(sql)?;
+        let map_row = |row: &rusqlite::Row| -> rusqlite::Result<(String, String, String, String, f64, i64)> {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
+        };
+        let raw_rows: Vec<(String, String, String, String, f64, i64)> = match status {
+            Some(s) => stmt.query_map(params![s], map_row)?.collect::<std::result::Result<Vec<_>, _>>()?,
+            None => stmt.query_map([], map_row)?.collect::<std::result::Result<Vec<_>, _>>()?,
+        };
+        let mut out = Vec::with_capacity(raw_rows.len());
+        for (id, type_str, members_json, evidence_json, score, weak) in raw_rows {
+            out.push(Discovery {
+                id: Uuid::parse_str(&id).map_err(|e| crate::CoreError::Other(e.to_string()))?,
+                dtype: parse_discovery_type(&type_str),
+                members: serde_json::from_str(&members_json)?,
+                evidence: serde_json::from_str(&evidence_json)?,
+                score: score as f32,
+                weak_signal: weak != 0,
+            });
+        }
+        Ok(out)
+    }
+
+    /// 발견 단건 조회 (id 기준)
+    pub fn get_discovery(&self, id: &Uuid) -> Result<Option<Discovery>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT type, members_json, evidence_json, score, weak_signal FROM discoveries WHERE id=?1")?;
+        let mut rows = stmt.query(params![id.to_string()])?;
+        if let Some(row) = rows.next()? {
+            let type_str: String = row.get(0)?;
+            let members_json: String = row.get(1)?;
+            let evidence_json: String = row.get(2)?;
+            let score: f64 = row.get(3)?;
+            let weak: i64 = row.get(4)?;
+            Ok(Some(Discovery {
+                id: *id,
+                dtype: parse_discovery_type(&type_str),
+                members: serde_json::from_str(&members_json)?,
+                evidence: serde_json::from_str(&evidence_json)?,
+                score: score as f32,
+                weak_signal: weak != 0,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// 주제 카드 전체 조회 (완전 역직렬화)
+    pub fn list_topic_cards(&self, include_deleted: bool) -> Result<Vec<TopicCard>> {
+        let sql = if include_deleted {
+            "SELECT id, name, label_source, discovery_id, members_json, evidence_snapshot_json, note, status, created_at, updated_at, deleted_at FROM topic_cards ORDER BY created_at DESC"
+        } else {
+            "SELECT id, name, label_source, discovery_id, members_json, evidence_snapshot_json, note, status, created_at, updated_at, deleted_at FROM topic_cards WHERE deleted_at IS NULL ORDER BY created_at DESC"
+        };
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = stmt.query_map([], row_to_topic_card)?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    /// 주제 카드 단건 조회 (soft-delete 여부 무관하게 조회)
+    pub fn get_topic_card(&self, id: &Uuid) -> Result<Option<TopicCard>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, label_source, discovery_id, members_json, evidence_snapshot_json, note, status, created_at, updated_at, deleted_at FROM topic_cards WHERE id=?1",
+        )?;
+        let mut rows = stmt.query_map(params![id.to_string()], row_to_topic_card)?;
+        rows.next().transpose().map_err(Into::into)
+    }
+
+    /// 소스 연결 정보 upsert (토큰 자체가 아니라 지문만 저장 — 원문은 OS 보안 저장소)
+    pub fn upsert_source(&self, source: &str, base_url: &str, token_fingerprint: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            r#"INSERT INTO sources (source, base_url, pairing_token_hash, last_synced_at) VALUES (?1, ?2, ?3, NULL)
+               ON CONFLICT(source) DO UPDATE SET base_url=excluded.base_url, pairing_token_hash=excluded.pairing_token_hash"#,
+            params![source, base_url, token_fingerprint],
+        )?;
+        Ok(())
+    }
+
+    /// 소스 동기화 시각 갱신
+    pub fn touch_source_synced(&self, source: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE sources SET last_synced_at=?2 WHERE source=?1",
+            params![source, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    /// 소스 연결 해제
+    pub fn delete_source(&self, source: &str) -> Result<()> {
+        self.conn.execute("DELETE FROM sources WHERE source=?1", params![source])?;
+        Ok(())
+    }
+
+    /// 등록된 소스 목록
+    pub fn list_sources(&self) -> Result<Vec<SourceRow>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT source, base_url, pairing_token_hash, last_synced_at FROM sources ORDER BY source")?;
+        let rows = stmt.query_map([], |row| {
+            Ok(SourceRow {
+                source: row.get(0)?,
+                base_url: row.get(1)?,
+                token_fingerprint: row.get(2)?,
+                last_synced_at: row.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    /// 카드의 환류 이력 조회
+    pub fn list_feedbacks(&self, topic_card_id: &Uuid) -> Result<Vec<FeedbackRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT target, payload_summary, status, memory_id, sent_at FROM feedbacks WHERE topic_card_id=?1 ORDER BY sent_at DESC",
+        )?;
+        let rows = stmt.query_map(params![topic_card_id.to_string()], |row| {
+            Ok(FeedbackRow {
+                target: row.get(0)?,
+                payload_summary: row.get(1)?,
+                status: row.get(2)?,
+                memory_id: row.get(3)?,
+                sent_at: row.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+}
+
+/// discoveries.type 컬럼 문자열 → DiscoveryType (알 수 없는 값은 Drift로 폴백하지 않고 Cluster로 — 보수적 기본)
+fn parse_discovery_type(s: &str) -> DiscoveryType {
+    match s {
+        "bridge" => DiscoveryType::Bridge,
+        "gap" => DiscoveryType::Gap,
+        "drift" => DiscoveryType::Drift,
+        _ => DiscoveryType::Cluster,
+    }
+}
+
+fn row_to_topic_card(row: &rusqlite::Row) -> rusqlite::Result<TopicCard> {
+    let id: String = row.get(0)?;
+    let name: String = row.get(1)?;
+    let label_source: String = row.get(2)?;
+    let discovery_id: String = row.get(3)?;
+    let members_json: String = row.get(4)?;
+    let evidence_json: String = row.get(5)?;
+    let note: Option<String> = row.get(6)?;
+    let status: String = row.get(7)?;
+    let created_at: String = row.get(8)?;
+    let updated_at: String = row.get(9)?;
+    let deleted_at: Option<String> = row.get(10)?;
+
+    Ok(TopicCard {
+        id: Uuid::parse_str(&id).unwrap_or_else(|_| Uuid::nil()),
+        name,
+        label_source: if label_source == "ai" { LabelSource::Ai } else { LabelSource::User },
+        discovery_id: Uuid::parse_str(&discovery_id).unwrap_or_else(|_| Uuid::nil()),
+        members: serde_json::from_str(&members_json).unwrap_or_default(),
+        evidence_snapshot: serde_json::from_str(&evidence_json).unwrap_or(crate::discovery::Evidence {
+            semantic_sim: 0.0,
+            temporal_overlap: 0.0,
+            frequency_signal: 0.0,
+            period_from: None,
+            period_to: None,
+            note: None,
+        }),
+        note,
+        status: match status.as_str() {
+            "confirmed" => CardStatus::Confirmed,
+            "archived" => CardStatus::Archived,
+            _ => CardStatus::Draft,
+        },
+        created_at: created_at.parse().unwrap_or_else(|_| Utc::now()),
+        updated_at: updated_at.parse().unwrap_or_else(|_| Utc::now()),
+        deleted_at: deleted_at.and_then(|d| d.parse().ok()),
+    })
+}
+
+/// sources 테이블 조회 결과
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SourceRow {
+    pub source: String,
+    pub base_url: String,
+    pub token_fingerprint: Option<String>,
+    pub last_synced_at: Option<String>,
+}
+
+/// feedbacks 테이블 조회 결과
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FeedbackRow {
+    pub target: String,
+    pub payload_summary: String,
+    pub status: String,
+    pub memory_id: Option<String>,
+    pub sent_at: String,
 }
 
 #[cfg(test)]
@@ -397,5 +622,120 @@ mod tests {
         store.upsert_topic_card(&card).unwrap();
         assert_eq!(store.count_active_topic_cards().unwrap(), 0);
         assert!(store.get_topic_card_name(&card.id).unwrap().is_none());
+    }
+
+    // list_keyword_cache가 소스별 결정적 순서로 완전 역직렬화되는지 검증
+    #[test]
+    fn list_keyword_cache_roundtrip() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_keyword_cache(&rec()).unwrap();
+        let mut second = rec();
+        second.source = SourceId::TxtBrain;
+        second.normalized_text = "측정문제".into();
+        second.text = "측정 문제".into();
+        store.upsert_keyword_cache(&second).unwrap();
+
+        let all = store.list_keyword_cache().unwrap();
+        assert_eq!(all.len(), 2);
+        // ORDER BY source: "txtbrain" < "txtdiary" (사전식)
+        assert_eq!(all[0].source, SourceId::TxtBrain);
+        assert_eq!(all[1].source, SourceId::TxtDiary);
+    }
+
+    // list_discoveries가 status 필터·score 내림차순으로 완전 역직렬화되는지, get_discovery 단건도 검증
+    #[test]
+    fn list_and_get_discoveries() {
+        let store = Store::open_in_memory().unwrap();
+        let low = Discovery {
+            id: Uuid::new_v4(),
+            dtype: DiscoveryType::Gap,
+            members: vec![rec()],
+            evidence: Evidence { semantic_sim: 0.2, temporal_overlap: 0.0, frequency_signal: 0.1, period_from: None, period_to: None, note: Some("약함".into()) },
+            score: 0.2,
+            weak_signal: true,
+        };
+        let high = Discovery {
+            id: Uuid::new_v4(),
+            dtype: DiscoveryType::Cluster,
+            members: vec![rec()],
+            evidence: Evidence { semantic_sim: 0.9, temporal_overlap: 0.8, frequency_signal: 0.7, period_from: None, period_to: None, note: None },
+            score: 0.85,
+            weak_signal: false,
+        };
+        store.insert_discovery(&low).unwrap();
+        store.insert_discovery(&high).unwrap();
+        store.set_discovery_status(&high.id, "adopted").unwrap();
+
+        let all = store.list_discoveries(None).unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].id, high.id, "score 내림차순이어야 함");
+
+        let adopted_only = store.list_discoveries(Some("adopted")).unwrap();
+        assert_eq!(adopted_only.len(), 1);
+        assert_eq!(adopted_only[0].dtype, DiscoveryType::Cluster);
+
+        let fetched = store.get_discovery(&low.id).unwrap().unwrap();
+        assert!(fetched.weak_signal);
+        assert_eq!(fetched.evidence.note.as_deref(), Some("약함"));
+    }
+
+    // list_topic_cards의 삭제 포함/제외 필터와 get_topic_card 단건 조회 검증
+    #[test]
+    fn list_and_get_topic_cards() {
+        let store = Store::open_in_memory().unwrap();
+        let d = Discovery {
+            id: Uuid::new_v4(),
+            dtype: DiscoveryType::Bridge,
+            members: vec![rec()],
+            evidence: Evidence { semantic_sim: 0.7, temporal_overlap: 0.3, frequency_signal: 0.4, period_from: None, period_to: None, note: None },
+            score: 0.6,
+            weak_signal: false,
+        };
+        let mut card = TopicCard::adopt(&d, "테스트 카드", LabelSource::User);
+        store.upsert_topic_card(&card).unwrap();
+
+        assert_eq!(store.list_topic_cards(false).unwrap().len(), 1);
+        let fetched = store.get_topic_card(&card.id).unwrap().unwrap();
+        assert_eq!(fetched.name, "테스트 카드");
+        assert_eq!(fetched.members[0].text, "관측자");
+
+        card.soft_delete();
+        store.upsert_topic_card(&card).unwrap();
+        assert_eq!(store.list_topic_cards(false).unwrap().len(), 0, "삭제 제외 목록에서 빠져야 함");
+        assert_eq!(store.list_topic_cards(true).unwrap().len(), 1, "삭제 포함 목록엔 남아야 함");
+    }
+
+    // 소스 페어링 정보(지문만) upsert/list/delete 및 feedbacks 이력 조회 검증
+    #[test]
+    fn sources_and_feedbacks_listing() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_source("txtdiary", "http://127.0.0.1:4001", Some("fingerprint-abc")).unwrap();
+        store.touch_source_synced("txtdiary").unwrap();
+
+        let sources = store.list_sources().unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].source, "txtdiary");
+        assert!(sources[0].last_synced_at.is_some());
+        assert_eq!(sources[0].token_fingerprint.as_deref(), Some("fingerprint-abc"));
+
+        store.delete_source("txtdiary").unwrap();
+        assert!(store.list_sources().unwrap().is_empty());
+
+        let d = Discovery {
+            id: Uuid::new_v4(),
+            dtype: DiscoveryType::Cluster,
+            members: vec![rec()],
+            evidence: Evidence { semantic_sim: 0.5, temporal_overlap: 0.5, frequency_signal: 0.5, period_from: None, period_to: None, note: None },
+            score: 0.5,
+            weak_signal: false,
+        };
+        let card = TopicCard::adopt(&d, "환류 테스트", LabelSource::User);
+        store.upsert_topic_card(&card).unwrap();
+        store.insert_feedback(&card.id, "요약", "created", Some("aim-1")).unwrap();
+        store.insert_feedback(&card.id, "요약(update)", "updated", Some("aim-1")).unwrap();
+
+        let history = store.list_feedbacks(&card.id).unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].status, "updated", "최신순 정렬이어야 함");
     }
 }
