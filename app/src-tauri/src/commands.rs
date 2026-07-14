@@ -20,7 +20,6 @@ use crate::{embed_select, pipeline, secure};
 const SETTING_DISCOVERY_CONFIG: &str = "discovery_config";
 const SETTING_OLLAMA_URL: &str = "ollama_base_url";
 const SETTING_AIMEMORY_ENDPOINT: &str = "aimemory_endpoint";
-const SETTING_ACCESSIBILITY: &str = "accessibility";
 
 fn default_ollama_url() -> String {
     "http://127.0.0.1:11434".to_string()
@@ -304,25 +303,14 @@ pub fn get_feedback_history(state: State<AppState>, card_id: String) -> Result<V
 // 설정
 // ---------------------------------------------------------------------------
 
+// 화면 설정(글꼴·글자 크기·언어)은 SVIL 표준에 따라 프론트엔드 전용 관심사다 — 브라우저
+// localStorage에 저장하고 CSS 변수로 즉시 적용한다(app/src/lib/prefs.ts, lib/i18n.ts).
+// 백엔드 SettingsDto는 앱 기능 설정(발견 엔진·연동 주소)만 다룬다.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SettingsDto {
     pub discovery_config: DiscoveryConfig,
     pub ollama_base_url: String,
     pub aimemory_endpoint: String,
-    pub accessibility: AccessibilityDto,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
-pub struct AccessibilityDto {
-    pub high_contrast: bool,
-    pub font_scale: f32,
-    pub reduce_motion: bool,
-}
-
-impl Default for AccessibilityDto {
-    fn default() -> Self {
-        Self { high_contrast: true, font_scale: 1.0, reduce_motion: false }
-    }
 }
 
 #[tauri::command]
@@ -346,13 +334,7 @@ pub fn get_settings(state: State<AppState>) -> Result<SettingsDto, String> {
         .flatten()
         .and_then(|v| v.as_str().map(String::from))
         .unwrap_or_else(|| DEFAULT_ENDPOINT.to_string());
-    let accessibility = store
-        .get_setting(SETTING_ACCESSIBILITY)
-        .ok()
-        .flatten()
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
-    Ok(SettingsDto { discovery_config, ollama_base_url, aimemory_endpoint, accessibility })
+    Ok(SettingsDto { discovery_config, ollama_base_url, aimemory_endpoint })
 }
 
 #[tauri::command]
@@ -366,9 +348,6 @@ pub fn set_settings(state: State<AppState>, settings: SettingsDto) -> Result<(),
         .map_err(|e| e.to_string())?;
     store
         .set_setting(SETTING_AIMEMORY_ENDPOINT, &serde_json::json!(settings.aimemory_endpoint))
-        .map_err(|e| e.to_string())?;
-    store
-        .set_setting(SETTING_ACCESSIBILITY, &serde_json::to_value(&settings.accessibility).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
     Ok(())
 }

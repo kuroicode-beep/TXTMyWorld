@@ -1,16 +1,20 @@
-// src/screens/Settings.tsx — S6 설정·접근성. 엔진 파라미터, 클라우드 동의 설정, 접근성, 버전/업데이트 히스토리.
+// src/screens/Settings.tsx — S6 설정. SVIL 표준 §2.1: 화면(언어·글자크기·글꼴) + 발견 엔진·연동·버전/히스토리.
 
 import { useEffect, useState } from "react";
-import { AccessibilityDto, AppInfo, EmbedderStatus, SettingsDto, api } from "../api";
+import { AppInfo, EmbedderStatus, SettingsDto, api } from "../api";
 import { SourcePairingPanel } from "../components/SourcePairingPanel";
+import { LANG_OPTIONS, useI18n } from "../lib/i18n";
+import { FONT_FAMILY_OPTIONS, FontScale, usePrefs } from "../lib/prefs";
 
 interface Props {
   onToast: (msg: string) => void;
-  accessibility: AccessibilityDto;
-  onAccessibilityChange: (a: AccessibilityDto) => void;
 }
 
-export function Settings({ onToast, accessibility, onAccessibilityChange }: Props) {
+const SIZES: FontScale[] = ["S", "M", "L"];
+
+export function Settings({ onToast }: Props) {
+  const { t, lang, setLang } = useI18n();
+  const { scale, setScale, fontFamily, setFontFamily } = usePrefs();
   const [settings, setSettings] = useState<SettingsDto | null>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [embedder, setEmbedder] = useState<EmbedderStatus | null>(null);
@@ -30,7 +34,6 @@ export function Settings({ onToast, accessibility, onAccessibilityChange }: Prop
     },
     ollama_base_url: "http://127.0.0.1:11434",
     aimemory_endpoint: "http://127.0.0.1:8765/mcp/tools/memory_write",
-    accessibility,
   };
 
   async function loadAll() {
@@ -38,13 +41,13 @@ export function Settings({ onToast, accessibility, onAccessibilityChange }: Prop
     try {
       setSettings(await api.getSettings());
     } catch (e) {
-      onToast(`설정을 불러오지 못했습니다: ${e}`);
+      onToast(t("settings.loadFail", { e: String(e) }));
       setSettings(fallbackSettings);
     }
     try {
       setAppInfo(await api.getAppInfo());
     } catch {
-      // 버전 정보 실패는 무해하게 무시 — 화면 하단에 "…"로 표시됨
+      // 버전 정보 실패는 무해하게 무시
     }
     try {
       setEmbedder(await api.getEmbedderStatus());
@@ -55,17 +58,17 @@ export function Settings({ onToast, accessibility, onAccessibilityChange }: Prop
 
   useEffect(() => {
     loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSave() {
     if (!settings) return;
     setSaving(true);
     try {
-      const next: SettingsDto = { ...settings, accessibility };
-      await api.setSettings(next);
-      onToast("설정을 저장했습니다.");
+      await api.setSettings(settings);
+      onToast(t("settings.saveOk"));
     } catch (e) {
-      onToast(`저장 실패: ${e}`);
+      onToast(t("settings.saveFail", { e: String(e) }));
     } finally {
       setSaving(false);
     }
@@ -73,28 +76,73 @@ export function Settings({ onToast, accessibility, onAccessibilityChange }: Prop
 
   async function handleSeedDemo() {
     const n = await api.seedDemoData();
-    onToast(`데모 키워드 ${n}개를 추가했습니다.`);
+    onToast(t("settings.demoAdded", { n }));
   }
 
   if (!settings) {
-    return <p>불러오는 중…</p>;
+    return <p>{t("common.loading")}</p>;
   }
 
   return (
     <section aria-labelledby="settings-title" className="stack">
-      <h2 id="settings-title">설정</h2>
+      <h2 id="settings-title">{t("settings.title")}</h2>
+
+      {/* 화면 — SVIL 표준: 언어·글자 크기·글꼴 (설정 메뉴에 항상 표시) */}
+      <div className="panel stack">
+        <h3>{t("settings.display")}</h3>
+
+        <div className="toolbar">
+          <label htmlFor="lang-select" style={{ minWidth: 140 }}>
+            {t("settings.language")}
+          </label>
+          <select id="lang-select" value={lang} onChange={(e) => setLang(e.target.value as typeof lang)}>
+            {LANG_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="toolbar" role="group" aria-label={t("settings.fontSize")}>
+          <span style={{ minWidth: 140 }}>{t("settings.fontSize")}</span>
+          {SIZES.map((s) => (
+            <button key={s} className={scale === s ? "primary" : ""} aria-pressed={scale === s} onClick={() => setScale(s)}>
+              {t(`settings.size.${s}`)}
+            </button>
+          ))}
+        </div>
+
+        <div className="toolbar" role="group" aria-label={t("settings.font")}>
+          <span style={{ minWidth: 140, alignSelf: "flex-start", paddingTop: 12 }}>{t("settings.font")}</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, flex: 1 }}>
+            {FONT_FAMILY_OPTIONS.map((o) => (
+              <button
+                key={o.id}
+                className={fontFamily === o.id ? "primary" : ""}
+                aria-pressed={fontFamily === o.id}
+                style={{ fontFamily: o.css }}
+                onClick={() => setFontFamily(o.id)}
+              >
+                {o.label}
+                {o.isDefault ? ` ${t("settings.fontDefaultTag")}` : ""}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <SourcePairingPanel onToast={onToast} />
 
       <div className="panel stack">
-        <h3>발견 엔진</h3>
+        <h3>{t("settings.engineTitle")}</h3>
         <p className="field-hint">
-          현재 임베딩 모델: <strong>{embedder?.model ?? "확인 중"}</strong>{" "}
-          {embedder && !embedder.is_real_model && "(Ollama 미연결 — 로컬 테스트용 폴백 사용 중)"} · 차원 {embedder?.dim ?? "-"}
+          {t("settings.embedderModel", { model: embedder?.model ?? "…" })}{" "}
+          {embedder && !embedder.is_real_model && t("settings.embedderFallback")} · {t("settings.embedderDim", { dim: embedder?.dim ?? "-" })}
         </p>
         <div className="row">
           <div>
-            <label htmlFor="w-s">의미 유사도 가중치 (w_s): {settings.discovery_config.weights.w_s.toFixed(2)}</label>
+            <label htmlFor="w-s">{t("settings.weightSemantic", { v: settings.discovery_config.weights.w_s.toFixed(2) })}</label>
             <input
               id="w-s"
               type="range"
@@ -111,7 +159,7 @@ export function Settings({ onToast, accessibility, onAccessibilityChange }: Prop
             />
           </div>
           <div>
-            <label htmlFor="w-t">기간 겹침 가중치 (w_t): {settings.discovery_config.weights.w_t.toFixed(2)}</label>
+            <label htmlFor="w-t">{t("settings.weightTemporal", { v: settings.discovery_config.weights.w_t.toFixed(2) })}</label>
             <input
               id="w-t"
               type="range"
@@ -128,7 +176,7 @@ export function Settings({ onToast, accessibility, onAccessibilityChange }: Prop
             />
           </div>
           <div>
-            <label htmlFor="w-f">빈도 신호 가중치 (w_f): {settings.discovery_config.weights.w_f.toFixed(2)}</label>
+            <label htmlFor="w-f">{t("settings.weightFrequency", { v: settings.discovery_config.weights.w_f.toFixed(2) })}</label>
             <input
               id="w-f"
               type="range"
@@ -147,7 +195,7 @@ export function Settings({ onToast, accessibility, onAccessibilityChange }: Prop
         </div>
         <div className="row">
           <div>
-            <label htmlFor="bridge-cut">브리지 최소 유사도: {settings.discovery_config.bridge_sim_cut.toFixed(2)}</label>
+            <label htmlFor="bridge-cut">{t("settings.bridgeCut", { v: settings.discovery_config.bridge_sim_cut.toFixed(2) })}</label>
             <input
               id="bridge-cut"
               type="range"
@@ -159,7 +207,7 @@ export function Settings({ onToast, accessibility, onAccessibilityChange }: Prop
             />
           </div>
           <div>
-            <label htmlFor="cluster-min">클러스터 최소 멤버 수: {settings.discovery_config.cluster_min_size}</label>
+            <label htmlFor="cluster-min">{t("settings.clusterMin", { v: settings.discovery_config.cluster_min_size })}</label>
             <input
               id="cluster-min"
               type="number"
@@ -171,84 +219,45 @@ export function Settings({ onToast, accessibility, onAccessibilityChange }: Prop
           </div>
         </div>
         <div className="row">
-          <button onClick={handleSeedDemo}>데모 데이터 추가</button>
+          <button onClick={handleSeedDemo}>{t("settings.addDemoData")}</button>
         </div>
       </div>
 
       <div className="panel stack">
-        <h3>연동</h3>
+        <h3>{t("settings.integrationTitle")}</h3>
         <div>
-          <label htmlFor="ollama-url">Ollama 주소 (로컬 bge-m3 임베딩)</label>
-          <input
-            id="ollama-url"
-            type="url"
-            value={settings.ollama_base_url}
-            onChange={(e) => setSettings({ ...settings, ollama_base_url: e.target.value })}
-          />
+          <label htmlFor="ollama-url">{t("settings.ollamaUrl")}</label>
+          <input id="ollama-url" type="url" value={settings.ollama_base_url} onChange={(e) => setSettings({ ...settings, ollama_base_url: e.target.value })} />
         </div>
         <div>
-          <label htmlFor="aimemory-endpoint">TXTAIMemory 환류 엔드포인트 (X2)</label>
+          <label htmlFor="aimemory-endpoint">{t("settings.aimemoryEndpoint")}</label>
           <input
             id="aimemory-endpoint"
             type="url"
             value={settings.aimemory_endpoint}
             onChange={(e) => setSettings({ ...settings, aimemory_endpoint: e.target.value })}
           />
-          <p className="field-hint">비워두지 않아도 됩니다 — 미연결 시 환류는 실패로 기록되고 앱은 정상 동작합니다.</p>
-        </div>
-      </div>
-
-      <div className="panel stack">
-        <h3>접근성</h3>
-        <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <input
-            type="checkbox"
-            style={{ width: 24, height: 24 }}
-            checked={accessibility.high_contrast}
-            onChange={(e) => onAccessibilityChange({ ...accessibility, high_contrast: e.target.checked })}
-          />
-          고대비 모드
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <input
-            type="checkbox"
-            style={{ width: 24, height: 24 }}
-            checked={accessibility.reduce_motion}
-            onChange={(e) => onAccessibilityChange({ ...accessibility, reduce_motion: e.target.checked })}
-          />
-          애니메이션 줄이기
-        </label>
-        <div>
-          <label htmlFor="font-scale">글자 크기 배율: {accessibility.font_scale.toFixed(2)}x</label>
-          <input
-            id="font-scale"
-            type="range"
-            min={1}
-            max={2}
-            step={0.1}
-            value={accessibility.font_scale}
-            onChange={(e) => onAccessibilityChange({ ...accessibility, font_scale: Number(e.target.value) })}
-          />
+          <p className="field-hint">{t("settings.aimemoryHint")}</p>
         </div>
       </div>
 
       <div className="row">
         <button className="primary" onClick={handleSave} disabled={saving}>
-          {saving ? "저장 중…" : "설정 저장"}
+          {saving ? t("settings.savingSettings") : t("settings.saveSettings")}
         </button>
       </div>
 
       <div className="panel stack">
-        <h3>정보</h3>
-        <p>버전 v{appInfo?.version ?? "…"}</p>
-        <h4>업데이트 히스토리</h4>
+        <h3>{t("settings.infoTitle")}</h3>
+        <p className="mono">{t("settings.versionLabel", { v: appInfo?.version ?? "…" })}</p>
+        <h4>{t("settings.historyTitle")}</h4>
         <ul>
           {(appInfo?.history ?? [])
             .slice()
             .reverse()
             .map((h) => (
               <li key={h.version}>
-                <strong>v{h.version}</strong> ({h.date}) — {h.summary}
+                <strong className="mono">v{h.version}</strong> <span className="mono">({h.date})</span> — {h.summary}
               </li>
             ))}
         </ul>

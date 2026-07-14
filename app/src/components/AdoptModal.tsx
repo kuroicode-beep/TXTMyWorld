@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { DiscoveryDto, api } from "../api";
+import { useI18n } from "../lib/i18n";
 
 interface Props {
   discovery: DiscoveryDto;
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function AdoptModal({ discovery, onClose, onAdopted }: Props) {
+  const { t } = useI18n();
   const suggested = discovery.members.map((m) => m.text).join(" · ");
   const [name, setName] = useState(suggested);
   const [note, setNote] = useState("");
@@ -20,7 +22,7 @@ export function AdoptModal({ discovery, onClose, onAdopted }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      setError("이름을 입력해 주세요.");
+      setError(t("adopt.nameRequired"));
       return;
     }
     setBusy(true);
@@ -56,16 +58,16 @@ export function AdoptModal({ discovery, onClose, onAdopted }: Props) {
         aria-labelledby="adopt-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="adopt-modal-title">주제 카드 만들기</h2>
+        <h2 id="adopt-modal-title">{t("adopt.title")}</h2>
         <form className="stack" onSubmit={handleSubmit}>
           <div>
-            <label htmlFor="card-name">이름</label>
+            <label htmlFor="card-name">{t("adopt.nameLabel")}</label>
             <input id="card-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required />
-            <p className="field-hint">제안: {suggested}</p>
+            <p className="field-hint">{t("adopt.suggestedHint", { v: suggested })}</p>
           </div>
 
           <div>
-            <label htmlFor="card-note">메모 (선택)</label>
+            <label htmlFor="card-note">{t("adopt.noteLabel")}</label>
             <textarea id="card-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
 
@@ -77,26 +79,23 @@ export function AdoptModal({ discovery, onClose, onAdopted }: Props) {
                 onChange={(e) => setSendToMemory(e.target.checked)}
                 style={{ width: 24, height: 24 }}
               />
-              이 주제를 AI 기억(TXTAIMemory)에 남기기
+              {t("adopt.memoryCheckbox")}
             </label>
-            <p className="field-hint">
-              전송 항목: 제목·구성 키워드·근거 요약·소스 딥링크만 보냅니다. 일기·문서·대화 본문은 절대 포함되지 않습니다.
-              TXTAIMemory가 연결되어 있지 않으면 전송은 실패로 기록되고 나중에 다시 시도할 수 있습니다.
-            </p>
+            <p className="field-hint">{t("adopt.memoryHint")}</p>
           </div>
 
           {error && (
-            <p role="alert" style={{ color: "var(--negative)" }}>
+            <p role="alert" style={{ color: "var(--danger)" }}>
               {error}
             </p>
           )}
 
           <div className="row" style={{ justifyContent: "flex-end" }}>
             <button type="button" onClick={onClose} disabled={busy}>
-              취소
+              {t("adopt.cancel")}
             </button>
             <button type="submit" className="primary" disabled={busy}>
-              {busy ? "저장 중…" : "저장"}
+              {busy ? t("adopt.saving") : t("adopt.save")}
             </button>
           </div>
         </form>

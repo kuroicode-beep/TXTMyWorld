@@ -108,17 +108,11 @@ export interface DiscoveryConfig {
   weak_signal_score: number;
 }
 
-export interface AccessibilityDto {
-  high_contrast: boolean;
-  font_scale: number;
-  reduce_motion: boolean;
-}
-
+// 글꼴·글자 크기·언어는 SVIL 표준에 따라 프론트엔드 전용(localStorage) 관심사다 — lib/prefs.ts, lib/i18n.ts 참조.
 export interface SettingsDto {
   discovery_config: DiscoveryConfig;
   ollama_base_url: string;
   aimemory_endpoint: string;
-  accessibility: AccessibilityDto;
 }
 
 export interface EmbedderStatus {
@@ -129,12 +123,6 @@ export interface EmbedderStatus {
 
 export const SOURCE_IDS = ["txtdiary", "txtbrain", "txtaimemory"] as const;
 export type SourceIdStr = (typeof SOURCE_IDS)[number];
-
-export const SOURCE_LABELS: Record<SourceIdStr, string> = {
-  txtdiary: "TXTDiary (일기)",
-  txtbrain: "TXTBrain (문서)",
-  txtaimemory: "TXTAIMemory (AI 대화)",
-};
 
 export const api = {
   getAppInfo: () => invoke<AppInfo>("get_app_info"),

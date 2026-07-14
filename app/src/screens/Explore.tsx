@@ -6,20 +6,16 @@ import { useEffect, useMemo, useState } from "react";
 import { api, DiscoveryDto, DiscoveryType } from "../api";
 import { DiscoveryCard } from "../components/DiscoveryCard";
 import { AdoptModal } from "../components/AdoptModal";
+import { useI18n } from "../lib/i18n";
 
 interface Props {
   onToast: (msg: string) => void;
 }
 
-const TYPE_OPTIONS: { value: DiscoveryType | "all"; label: string }[] = [
-  { value: "all", label: "전체" },
-  { value: "bridge", label: "브리지" },
-  { value: "gap", label: "갭" },
-  { value: "cluster", label: "이머전트 클러스터" },
-  { value: "drift", label: "드리프트" },
-];
+const TYPES: DiscoveryType[] = ["bridge", "gap", "cluster", "drift"];
 
 export function Explore({ onToast }: Props) {
+  const { t } = useI18n();
   const [all, setAll] = useState<DiscoveryDto[]>([]);
   const [typeFilter, setTypeFilter] = useState<DiscoveryType | "all">("all");
   const [query, setQuery] = useState("");
@@ -33,7 +29,7 @@ export function Explore({ onToast }: Props) {
     try {
       setAll(await api.listDiscoveries());
     } catch (e) {
-      onToast(`목록을 불러오지 못했습니다: ${e}`);
+      onToast(t("explore.loadFail", { e: String(e) }));
     } finally {
       setLoading(false);
     }
@@ -41,6 +37,7 @@ export function Explore({ onToast }: Props) {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
@@ -63,32 +60,39 @@ export function Explore({ onToast }: Props) {
     try {
       await api.openDeeplink(url);
     } catch (e) {
-      onToast(`연결된 앱을 열 수 없습니다: ${e}`);
+      onToast(t("common.deeplinkFail", { e: String(e) }));
     }
   }
 
   return (
     <section aria-labelledby="explore-title">
-      <h2 id="explore-title">탐색</h2>
+      <h2 id="explore-title">{t("explore.title")}</h2>
 
       <div className="panel">
         <div className="row">
           <div>
-            <label htmlFor="filter-type">발견 유형</label>
-            <select id="filter-type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)}>
-              {TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
+            <label htmlFor="filter-type">{t("explore.typeLabel")}</label>
+            <select id="filter-type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as DiscoveryType | "all")}>
+              <option value="all">{t("explore.type.all")}</option>
+              {TYPES.map((tp) => (
+                <option key={tp} value={tp}>
+                  {t(`discovery.type.${tp}`)}
                 </option>
               ))}
             </select>
           </div>
           <div>
-            <label htmlFor="filter-query">키워드 검색</label>
-            <input id="filter-query" type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="예: 관측자" />
+            <label htmlFor="filter-query">{t("explore.queryLabel")}</label>
+            <input
+              id="filter-query"
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("explore.queryPlaceholder")}
+            />
           </div>
           <div>
-            <label htmlFor="filter-score">최소 점수: {minScore.toFixed(2)}</label>
+            <label htmlFor="filter-score">{t("explore.scoreLabel", { v: minScore.toFixed(2) })}</label>
             <input
               id="filter-score"
               type="range"
@@ -101,20 +105,20 @@ export function Explore({ onToast }: Props) {
           </div>
           <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 22 }}>
             <input type="checkbox" checked={includeWeak} onChange={(e) => setIncludeWeak(e.target.checked)} style={{ width: 22, height: 22 }} />
-            약한 신호 포함
+            {t("explore.includeWeak")}
           </label>
         </div>
       </div>
 
-      {loading && <p>불러오는 중…</p>}
+      {loading && <p>{t("common.loading")}</p>}
 
       <p className="field-hint" role="status">
-        {filtered.length}건 표시 중 (전체 {all.length}건)
+        {t("explore.resultCount", { shown: filtered.length, total: all.length })}
       </p>
 
-      {!loading && filtered.length === 0 && <div className="empty-state">조건에 맞는 발견이 없습니다.</div>}
+      {!loading && filtered.length === 0 && <div className="empty-state">{t("explore.empty")}</div>}
 
-      <ul className="card-list" aria-label="탐색 결과 목록">
+      <ul className="card-list" aria-label={t("explore.listAria")}>
         {filtered.map((d) => (
           <DiscoveryCard key={d.id} discovery={d} onAdopt={setAdoptTarget} onDismiss={handleDismiss} onOpenDeeplink={handleOpenDeeplink} />
         ))}
@@ -125,7 +129,7 @@ export function Explore({ onToast }: Props) {
           discovery={adoptTarget}
           onClose={() => setAdoptTarget(null)}
           onAdopted={(_cardId, feedbackSent) => {
-            onToast(feedbackSent ? "주제 카드가 저장되고 AI 기억에도 전송됐습니다." : "주제 카드가 저장됐습니다.");
+            onToast(feedbackSent ? t("common.adoptedWithFeedback") : t("common.adopted"));
             setAdoptTarget(null);
           }}
         />

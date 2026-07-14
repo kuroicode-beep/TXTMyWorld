@@ -1,8 +1,9 @@
-// src/App.tsx — 앱 셸: 탭 내비게이션, 온보딩 게이트, 접근성 상태 적용, 토스트.
+// src/App.tsx — 앱 셸: 탭 내비게이션(+ 브라우저 히스토리 연동), 온보딩 게이트, 토스트.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./theme.css";
-import { AccessibilityDto, api } from "./api";
+import { api } from "./api";
+import { useI18n } from "./lib/i18n";
 import { Onboarding } from "./screens/Onboarding";
 import { Feed } from "./screens/Feed";
 import { Explore } from "./screens/Explore";
@@ -13,56 +14,91 @@ type Tab = "onboarding" | "feed" | "explore" | "archive" | "settings";
 
 const ONBOARDED_KEY = "txtmyworld_onboarded";
 
-const TABS: { id: Exclude<Tab, "onboarding">; label: string }[] = [
-  { id: "feed", label: "발견" },
-  { id: "explore", label: "탐색" },
-  { id: "archive", label: "보관함" },
-  { id: "settings", label: "설정" },
-];
-
 export default function App() {
+  const { t } = useI18n();
   const [tab, setTab] = useState<Tab>(() => (localStorage.getItem(ONBOARDED_KEY) ? "feed" : "onboarding"));
   const [version, setVersion] = useState("0.1.0");
   const [toast, setToast] = useState<string | null>(null);
-  const [accessibility, setAccessibility] = useState<AccessibilityDto>({
-    high_contrast: true,
-    font_scale: 1,
-    reduce_motion: false,
-  });
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+
+  const TABS: { id: Exclude<Tab, "onboarding">; label: string }[] = [
+    { id: "feed", label: t("nav.feed") },
+    { id: "explore", label: t("nav.explore") },
+    { id: "archive", label: t("nav.archive") },
+    { id: "settings", label: t("nav.settings") },
+  ];
 
   useEffect(() => {
     api.getAppInfo().then((info) => setVersion(info.version)).catch(() => {});
-    api
-      .getSettings()
-      .then((s) => setAccessibility(s.accessibility))
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setToast(null), 4500);
+    return () => clearTimeout(timer);
   }, [toast]);
+
+  // 뒤로/앞으로 내비게이션: history state에 현재 탭을 실어 popstate로 복원한다.
+  useEffect(() => {
+    history.replaceState({ tab: tabRef.current }, "");
+    const onPopState = (ev: PopStateEvent) => {
+      const nextTab = (ev.state?.tab as Tab | undefined) ?? "feed";
+      setTab(nextTab);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const navigateTab = useCallback((next: Tab) => {
+    if (next === tabRef.current) return;
+    history.pushState({ tab: next }, "");
+    setTab(next);
+  }, []);
+
+  // Alt+←/→ 및 마우스 뒤로/앞으로 버튼으로 히스토리 이동 (SVIL 표준 §4.1). Backspace는 사용하지 않는다.
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.altKey && ev.key === "ArrowLeft") {
+        ev.preventDefault();
+        history.back();
+      } else if (ev.altKey && ev.key === "ArrowRight") {
+        ev.preventDefault();
+        history.forward();
+      }
+    };
+    const onMouse = (ev: MouseEvent) => {
+      if (ev.button === 3) {
+        ev.preventDefault();
+        history.back();
+      } else if (ev.button === 4) {
+        ev.preventDefault();
+        history.forward();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mouseup", onMouse);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mouseup", onMouse);
+    };
+  }, []);
 
   function handleOnboardingDone() {
     localStorage.setItem(ONBOARDED_KEY, "1");
-    setTab("feed");
+    navigateTab("feed");
   }
 
-  const shellClass = ["app-shell", accessibility.high_contrast ? "high-contrast" : "", accessibility.reduce_motion ? "reduce-motion" : ""]
-    .filter(Boolean)
-    .join(" ");
-
   return (
-    <div className={shellClass} style={{ fontSize: `${16 * accessibility.font_scale}px` }}>
+    <div className="app-shell">
       <header className="app-header">
-        <h1 className="app-title">TXTMyWorld</h1>
+        <h1 className="app-title">{t("app.title")}</h1>
         <span className="app-version">v{version}</span>
         {tab !== "onboarding" && (
-          <nav className="tabs" aria-label="주요 화면 전환">
-            {TABS.map((t) => (
-              <button key={t.id} aria-current={tab === t.id ? "page" : undefined} onClick={() => setTab(t.id)}>
-                {t.label}
+          <nav className="tabs" aria-label={t("nav.aria")}>
+            {TABS.map((tb) => (
+              <button key={tb.id} aria-current={tab === tb.id ? "page" : undefined} onClick={() => navigateTab(tb.id)}>
+                {tb.label}
               </button>
             ))}
           </nav>
@@ -74,9 +110,7 @@ export default function App() {
         {tab === "feed" && <Feed onToast={setToast} />}
         {tab === "explore" && <Explore onToast={setToast} />}
         {tab === "archive" && <Archive onToast={setToast} />}
-        {tab === "settings" && (
-          <Settings onToast={setToast} accessibility={accessibility} onAccessibilityChange={setAccessibility} />
-        )}
+        {tab === "settings" && <Settings onToast={setToast} />}
       </main>
 
       {toast && (

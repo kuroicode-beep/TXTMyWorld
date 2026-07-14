@@ -1,34 +1,79 @@
-/* src/theme.css — TXTMyWorld 접근성 기본 테마
-   원칙(CLAUDE.md §5): 다크 배경, 고대비 텍스트, 최소 폰트 16px, 터치 타겟 50px 이상,
-   색상만으로 상태 구분 금지(텍스트 라벨 병행), 대비 약한 회색 텍스트 지양. */
+/* src/theme.css — TXTMyWorld SVIL 표준 테마
+   고대비 다크 + 교보손글씨2019(로컬 번들) + 18px 기준 + 50px 타겟.
+   손글씨는 단일 굵기라 위계는 굵기 대신 크기·색으로 표현한다. */
+
+@font-face {
+  font-family: "KyoboHandwriting2019";
+  src: url("/fonts/KyoboHandwriting2019.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "NanumGothic";
+  src: url("/fonts/NanumGothic.woff") format("woff");
+  font-weight: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LINE Seed Sans KR";
+  src: url("/fonts/LINESeedKR-Rg.woff2") format("woff2");
+  font-weight: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Gowun Dodum";
+  src: url("/fonts/GowunDodum-Regular.woff") format("woff");
+  font-weight: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cafe24Dongdong";
+  src: url("/fonts/Cafe24Dongdong.woff") format("woff");
+  font-weight: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TmoneyRoundWind";
+  src: url("/fonts/TmoneyRoundWindRegular.woff") format("woff");
+  font-weight: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Recipekorea";
+  src: url("/fonts/Recipekorea.woff") format("woff");
+  font-weight: normal;
+  font-display: swap;
+}
 
 :root {
-  --bg: #0f1115;
-  --bg-elevated: #171a21;
-  --bg-card: #1d212a;
-  --border: #3a4050;
-  --text: #f4f6fb;
-  --text-secondary: #cbd2e1; /* 저채도 회색 지양: 충분한 대비 유지 */
-  --accent: #7dd3fc;
-  --accent-strong: #38bdf8;
-  --positive: #4ade80;
-  --negative: #f87171;
-  --neutral: #cbd2e1;
-  --focus-ring: #facc15;
-  --radius: 10px;
-  --font-size-base: 16px;
-  --touch-target: 50px;
+  /* SVIL 고대비 다크 팔레트 (색상 하드코딩 금지 — 항상 이 토큰을 사용) */
+  --bg: #0d0d12;
+  --bg-elevated: #16161d;
+  --surface-2: #1f1f2a;
+  --border: #3a3a48;
+  --border-strong: #6b6b82;
+  --text: #f5f5f7;
+  --text-dim: #c9c9d4;
+  --accent: #7ec8ff;
+  --accent-strong: #b3ddff;
+  --accent-max: #d6ecff;
+  --success: #7ee2a8;
+  --warn: #ffd479;
+  --danger: #ff9b9b;
+  --focus-ring: #ffd479;
 
-  color-scheme: dark;
-  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif;
-  font-size: var(--font-size-base);
-  line-height: 1.6;
-  color: var(--text);
-  background-color: var(--bg);
+  --target-min: 50px;
+  --radius: 16px;
+  --radius-sm: 12px;
 }
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  font-size: 18px; /* usePrefs가 S(16)/M(18)/L(20)로 갱신 */
 }
 
 html,
@@ -41,71 +86,103 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
+  /* 글꼴은 설정에서 변경 가능(--app-font-family). 기본은 교보손글씨2019 */
+  font-family: var(--app-font-family, "KyoboHandwriting2019", "Pretendard", "Malgun Gothic", sans-serif);
+  line-height: 1.8;
+  letter-spacing: 0.02em;
+  word-break: keep-all;
 }
 
-.app-shell.high-contrast {
-  --bg: #000000;
-  --bg-elevated: #0a0a0a;
-  --bg-card: #121212;
-  --border: #ffffff;
-  --text: #ffffff;
-  --text-secondary: #f0f0f0;
-  --accent: #66e0ff;
-  --focus-ring: #ffff00;
+/* 손글씨는 단일 굵기 → 제목은 크기·색으로 위계 (bold 합성 금지) */
+h1 {
+  font-size: 2.2rem;
+  line-height: 1.4;
+  margin: 0 0 0.6em;
+  font-weight: normal;
+}
+h2 {
+  font-size: 1.7rem;
+  line-height: 1.4;
+  margin: 1.2em 0 0.5em;
+  font-weight: normal;
+}
+h3 {
+  font-size: 1.35rem;
+  margin: 0 0 0.5em;
+  font-weight: normal;
+  color: var(--accent-strong);
+}
+h4 {
+  font-size: 1.1rem;
+  margin: 0 0 0.4em;
+  font-weight: normal;
+}
+p {
+  margin: 0 0 1em;
+}
+strong {
+  font-weight: normal;
+  color: var(--accent-strong);
 }
 
-.app-shell.reduce-motion * {
-  animation: none !important;
-  transition: none !important;
+a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 button,
 input,
 select,
 textarea {
+  font-size: 1rem;
   font-family: inherit;
-  font-size: var(--font-size-base);
   color: var(--text);
 }
 
+/* 버튼 대비: 일반 버튼 = 본문색 + border-strong 테두리(≥3:1). 주 버튼 = accent-strong 배경 + 검정 텍스트(≈15:1) */
 button {
-  min-height: var(--touch-target);
-  min-width: var(--touch-target);
-  padding: 0 16px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
+  min-height: var(--target-min);
+  min-width: var(--target-min);
+  padding: 12px 20px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border-strong);
+  background: var(--surface-2);
   cursor: pointer;
+  line-height: 1.4;
 }
 
 button:hover {
   border-color: var(--accent);
-}
-
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-select:focus-visible,
-[tabindex]:focus-visible {
-  outline: 3px solid var(--focus-ring);
-  outline-offset: 2px;
+  color: var(--accent-strong);
 }
 
 button.primary {
   background: var(--accent-strong);
-  color: #04141c;
   border-color: var(--accent-strong);
-  font-weight: 700;
+  color: #000000;
+}
+
+button.primary:hover {
+  background: var(--accent-max);
+  border-color: var(--accent-max);
+  color: #000000;
 }
 
 button.danger {
-  border-color: var(--negative);
-  color: var(--negative);
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  opacity: 0.55;
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 input[type="text"],
@@ -114,20 +191,27 @@ input[type="password"],
 input[type="number"],
 select,
 textarea {
-  min-height: var(--touch-target);
-  padding: 8px 12px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
+  min-height: var(--target-min);
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  background: var(--surface-2);
   width: 100%;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-dim);
 }
 
 label {
   display: block;
-  font-weight: 600;
+  font-size: 1rem;
   margin-bottom: 6px;
   color: var(--text);
 }
+
+/* ---- 앱 셸 ---- */
 
 .app-shell {
   display: flex;
@@ -145,14 +229,17 @@ label {
 }
 
 .app-title {
-  font-size: 1.25rem;
-  font-weight: 800;
+  font-size: 1.4rem;
+  font-weight: normal;
   margin: 0;
+  color: var(--accent-strong);
 }
 
 .app-version {
-  color: var(--text-secondary);
-  font-size: 0.95rem;
+  color: var(--text-dim);
+  font-family: "Consolas", monospace;
+  font-size: 0.9rem;
+  letter-spacing: 0;
 }
 
 nav.tabs {
@@ -163,27 +250,30 @@ nav.tabs {
 
 nav.tabs button {
   background: transparent;
-  border: 1px solid transparent;
+  border: 2px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
 
 nav.tabs button[aria-current="page"] {
-  background: var(--bg-card);
-  border-color: var(--accent);
-  color: var(--accent);
-  font-weight: 700;
+  background: var(--surface-2);
+  border-bottom-color: var(--accent);
+  color: var(--accent-strong);
 }
 
 .app-body {
   flex: 1;
   overflow: auto;
-  padding: 20px;
+  padding: 24px 32px;
 }
 
+/* ---- 공용 레이아웃 ---- */
+
 .panel {
-  background: var(--bg-card);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: 22px 24px;
   margin-bottom: 16px;
 }
 
@@ -204,42 +294,41 @@ nav.tabs button[aria-current="page"] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 6px 14px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  font-size: 0.85rem;
-  font-weight: 700;
+  border: 1.5px solid var(--border);
+  font-size: 0.9rem;
+  color: var(--text-dim);
   white-space: nowrap;
 }
 
 .badge.type-bridge {
-  border-color: var(--accent);
   color: var(--accent);
+  border-color: currentColor;
 }
 .badge.type-gap {
-  border-color: var(--negative);
-  color: var(--negative);
+  color: var(--danger);
+  border-color: currentColor;
 }
 .badge.type-cluster {
-  border-color: var(--positive);
-  color: var(--positive);
+  color: var(--success);
+  border-color: currentColor;
 }
 .badge.type-drift {
-  border-color: #fbbf24;
-  color: #fbbf24;
+  color: var(--warn);
+  border-color: currentColor;
 }
-
 .badge.status-ok {
-  border-color: var(--positive);
-  color: var(--positive);
+  color: var(--success);
+  border-color: currentColor;
 }
 .badge.status-offline {
-  border-color: var(--negative);
-  color: var(--negative);
+  color: var(--danger);
+  border-color: currentColor;
 }
 .badge.status-weak {
-  border-color: var(--text-secondary);
-  color: var(--text-secondary);
+  color: var(--text-dim);
+  border-color: currentColor;
 }
 
 .card-list {
@@ -255,7 +344,7 @@ nav.tabs button[aria-current="page"] {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 22px 24px;
 }
 
 .card-item h3 {
@@ -264,36 +353,14 @@ nav.tabs button[aria-current="page"] {
 
 .evidence-text {
   color: var(--text);
-  line-height: 1.7;
-}
-
-table.a11y-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-table.a11y-table caption {
-  text-align: left;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-}
-
-table.a11y-table th,
-table.a11y-table td {
-  text-align: left;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-table.a11y-table th {
-  color: var(--text-secondary);
-  font-weight: 700;
+  line-height: 1.8;
 }
 
 .empty-state {
-  color: var(--text-secondary);
-  padding: 24px;
+  color: var(--text-dim);
+  padding: 48px 0;
   text-align: center;
+  font-size: 1.05rem;
 }
 
 .modal-backdrop {
@@ -307,7 +374,7 @@ table.a11y-table th {
 }
 
 .modal {
-  background: var(--bg-card);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 24px;
@@ -317,7 +384,7 @@ table.a11y-table th {
 }
 
 .field-hint {
-  color: var(--text-secondary);
+  color: var(--text-dim);
   font-size: 0.9rem;
 }
 
@@ -329,10 +396,15 @@ table.a11y-table th {
 
 .toolbar {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   flex-wrap: wrap;
   margin-bottom: 16px;
+}
+
+.toolbar input {
+  flex: 1;
+  min-width: 200px;
 }
 
 .toast {
@@ -347,6 +419,21 @@ table.a11y-table th {
   z-index: 60;
 }
 
+/* 타임스탬프·ID·버전·숫자열은 손글씨 대신 모노스페이스(가독성 예외 규칙) */
+.mono,
+time,
+.app-version,
+.field-hint .mono {
+  font-family: "Consolas", monospace;
+  letter-spacing: 0;
+}
+
+pre,
+code {
+  font-family: "Consolas", monospace;
+  letter-spacing: 0;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -357,4 +444,13 @@ table.a11y-table th {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
