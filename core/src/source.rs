@@ -9,12 +9,36 @@ use crate::models::{
 };
 use crate::{CoreError, Result};
 
+/// 페어링 토큰을 실어 보내는 인증 헤더 스킴.
+/// 패밀리 앱마다 다르다 — TXTBrain/TXTDiary는 `Authorization: Bearer`, TXTAIMemory는 `X-Pairing-Token`.
+/// (TXTSpace hub adapters.rs의 apply_auth와 동일 규약)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AuthHeader {
+    #[default]
+    Bearer,
+    XPairingToken,
+}
+
 /// 소스 연결 설정 (base_url은 반드시 127.0.0.1 — localhost 전용 원칙)
 #[derive(Debug, Clone)]
 pub struct SourceConfig {
     pub base_url: String,
-    /// 페어링 토큰 (Authorization 헤더). 호출측이 OS 보안 저장소에서 꺼내 전달
+    /// 페어링 토큰. 호출측이 OS 보안 저장소에서 꺼내 전달
     pub pairing_token: Option<String>,
+    /// 토큰 전송 헤더 스킴 (소스별로 다름)
+    pub auth_header: AuthHeader,
+}
+
+impl SourceConfig {
+    /// 기본(Bearer) 헤더로 생성
+    pub fn new(base_url: impl Into<String>, pairing_token: Option<String>) -> Self {
+        Self { base_url: base_url.into(), pairing_token, auth_header: AuthHeader::Bearer }
+    }
+
+    /// 헤더 스킴을 지정해 생성
+    pub fn with_header(base_url: impl Into<String>, pairing_token: Option<String>, auth_header: AuthHeader) -> Self {
+        Self { base_url: base_url.into(), pairing_token, auth_header }
+    }
 }
 
 /// 소스별 조회 결과 — 폴백 격리를 위해 소스 단위 Result로 유지
@@ -88,6 +112,18 @@ pub fn merge_keywords(responses: &[KeywordsResponse]) -> Vec<KeywordRecord> {
                 last_seen: parse_date(&kw.last_seen),
             });
         }
+        // TXTAIMemory 형태(items) — weight를 frequency로, normalized_text는 keyword로 폴백.
+        for item in &resp.items {
+            out.push(KeywordRecord {
+                source: resp.source.clone(),
+                text: item.keyword.clone(),
+                normalized_text: item.keyword.clone(),
+                frequency: item.weight,
+                avg_emotion_score: 0.0,
+                first_seen: None,
+                last_seen: None,
+            });
+        }
     }
     // 결정적 순서: (source, normalized_text)
     out.sort_by(|a, b| a.source.cmp(&b.source).then_with(|| a.normalized_text.cmp(&b.normalized_text)));
@@ -99,7 +135,10 @@ fn http_get(config: &SourceConfig, path: &str) -> SourceFetch<String> {
     let url = format!("{}{}", config.base_url, path);
     let mut req = ureq::get(&url);
     if let Some(token) = &config.pairing_token {
-        req = req.set("Authorization", &format!("Bearer {token}"));
+        req = match config.auth_header {
+            AuthHeader::Bearer => req.set("Authorization", &format!("Bearer {token}")),
+            AuthHeader::XPairingToken => req.set("X-Pairing-Token", token),
+        };
     }
     match req.call() {
         Ok(resp) => match resp.into_string() {
@@ -192,6 +231,28 @@ mod tests {
             }
             _ => panic!("정상 파싱이어야 함"),
         }
+    }
+
+    // TXTAIMemory 실제 /keywords 응답 형태(items + keyword/weight/ai_id)를 그대로 파싱·병합
+    #[test]
+    fn parse_and_merge_aimemory_items_schema() {
+        // 실제 47531/keywords 응답 캡처와 동일 형태
+        let resp: KeywordsResponse = serde_json::from_str(
+            r#"{"schema_version":"1.0","source":"txtaimemory","items":[
+                {"keyword":"관측자","weight":7.5,"ai_id":null},
+                {"keyword":"observer effect","weight":3.0,"ai_id":"yumi"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(resp.source, SourceId::TxtAiMemory);
+        assert!(resp.keywords.is_empty(), "aimemory는 keywords가 아니라 items를 쓴다");
+        assert_eq!(resp.items.len(), 2);
+
+        let merged = merge_keywords(&[resp]);
+        assert_eq!(merged.len(), 2);
+        assert!(merged.iter().all(|r| r.source == SourceId::TxtAiMemory));
+        let kw = merged.iter().find(|r| r.text == "관측자").unwrap();
+        assert_eq!(kw.frequency, 7.5, "weight가 frequency로 매핑돼야 함");
+        assert_eq!(kw.normalized_text, "관측자", "normalized_text는 keyword로 폴백");
     }
 
     // 병합: source별 별도 항목 + 결정적 순서 + 날짜 파싱

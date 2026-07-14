@@ -22,7 +22,7 @@ pub mod vector;
 pub mod vector_sqlite;
 
 /// 앱 버전 단일 소스(루트 VERSION 파일과 동기 유지)
-pub const APP_VERSION: &str = "0.2.1";
+pub const APP_VERSION: &str = "0.2.2";
 
 /// 버전 히스토리 (버전, 날짜, 요약) — UI 설정의 "업데이트 히스토리" 메뉴가 이 목록을 렌더링한다.
 /// 최신 버전이 배열 끝에 오도록 유지한다(화면에서는 최신순으로 뒤집어 표시).
@@ -46,6 +46,14 @@ pub const VERSION_HISTORY: &[(&str, &str, &str)] = &[
         "실제 3앱(TXTDiary/TXTBrain/TXTAIMemory) 연동 버그 수정 — 실배포 스키마(keyword/cooccurrences/항목별 \
          source) 수용, 소스 동기화 파싱 실패를 조용히 삼키던 버그 제거, 실측 포트로 기본값 교정, 토큰 없이 3소스를 \
          한 번에 받는 TXTSpace 허브 연결 옵션 추가. 실제 로컬 서비스 대상 라이브 검증 완료(190개 키워드 수신).",
+    ),
+    (
+        "0.2.2",
+        "2026-07-14",
+        "3소스 개별 직접 연결 — TXTDiary/TXTBrain/TXTAIMemory에 허브를 거치지 않고 각각 직접 연결. TXTSpace가 이미 \
+         발급받은 공유 페어링 토큰(Windows 자격 증명, 서비스명 TXTSpace)을 자동 재사용하므로 토큰 입력 없이 연결된다. \
+         소스별 인증 헤더(TXTAIMemory=X-Pairing-Token, 나머지=Bearer)와 TXTAIMemory items 스키마(keyword/weight/ai_id) \
+         수용, \"3개 앱에 지금 연결\" 원클릭 버튼 추가. 소스 앱은 전혀 수정하지 않고 TXTMyWorld만 확장.",
     ),
 ];
 

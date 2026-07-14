@@ -74,9 +74,10 @@ pub fn list_sources(state: State<AppState>) -> Result<Vec<SourceStatusDto>, Stri
 /// 소스 연결 상태를 실시간으로 점검한다 (/health 호출, 페어링 여부와 별개)
 #[tauri::command]
 pub fn check_source_health(base_url: String, source: String) -> SourceStatusDto {
-    use txtmyworld_core::source::{fetch_health, SourceConfig, SourceFetch};
-    let token = secure::get_token(&source);
-    let cfg = SourceConfig { base_url: base_url.clone(), pairing_token: token.clone() };
+    use txtmyworld_core::source::{fetch_health, AuthHeader, SourceConfig, SourceFetch};
+    let token = secure::resolve_token(&source).map(|(t, _)| t);
+    let auth = if source == "txtaimemory" { AuthHeader::XPairingToken } else { AuthHeader::Bearer };
+    let cfg = SourceConfig::with_header(base_url.clone(), token.clone(), auth);
     match fetch_health(&cfg) {
         Ok(SourceFetch::Ok(h)) => SourceStatusDto {
             source,
@@ -129,6 +130,14 @@ pub fn sync_all(state: State<AppState>) -> Result<Vec<SyncResultDto>, String> {
 pub fn seed_demo_data(state: State<AppState>) -> Result<usize, String> {
     let store = state.store.lock().map_err(|e| e.to_string())?;
     Ok(pipeline::seed_demo_data(&store))
+}
+
+/// 3소스(TXTDiary/TXTBrain/TXTAIMemory)를 각 실측 포트로 등록하고 한 번에 동기화한다.
+/// TXTSpace가 이미 저장해 둔 공유 토큰을 자동으로 재사용하므로, 대개 별도 토큰 입력 없이 바로 연결된다.
+#[tauri::command]
+pub fn connect_all_sources(state: State<AppState>) -> Result<Vec<SyncResultDto>, String> {
+    let store = state.store.lock().map_err(|e| e.to_string())?;
+    Ok(pipeline::connect_all_direct(&store))
 }
 
 // ---------------------------------------------------------------------------

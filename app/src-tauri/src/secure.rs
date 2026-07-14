@@ -5,6 +5,9 @@ use keyring::Entry;
 use sha2::{Digest, Sha256};
 
 const SERVICE: &str = "com.svil.txtmyworld";
+/// TXT 패밀리 공용 토큰 저장 서비스명 — TXTSpace UI·hub가 소스 페어링 토큰을 여기에 둔다
+/// (TXTSpace hub adapters.rs의 KEYRING_SERVICE와 동일). 이미 페어링된 소스 토큰을 재사용하기 위함.
+const FAMILY_SERVICE: &str = "TXTSpace";
 
 /// 소스 페어링 토큰을 OS 보안 저장소에 저장한다
 pub fn set_token(source: &str, token: &str) -> Result<(), String> {
@@ -12,9 +15,25 @@ pub fn set_token(source: &str, token: &str) -> Result<(), String> {
     entry.set_password(token).map_err(|e| e.to_string())
 }
 
-/// 저장된 토큰을 조회한다 (없으면 None)
+/// TXTMyWorld 자신이 저장한 토큰만 조회한다 (없으면 None)
 pub fn get_token(source: &str) -> Option<String> {
     Entry::new(SERVICE, source).ok()?.get_password().ok()
+}
+
+/// TXT 패밀리 공용(TXTSpace) 저장소의 소스 토큰을 조회한다.
+/// TXTSpace가 이미 페어링해 둔 토큰을 그대로 재사용할 수 있다 — 소스 앱은 토큰이 유효하면
+/// 누가 제시하든 받아주므로(단순 해시 검증), TXTSpace와 TXTMyWorld가 같은 토큰을 동시에 써도 된다.
+pub fn get_family_token(source: &str) -> Option<String> {
+    Entry::new(FAMILY_SERVICE, source).ok()?.get_password().ok()
+}
+
+/// 소스 연결에 쓸 토큰을 해석한다: TXTMyWorld 자체 페어링 우선, 없으면 TXTSpace 공유 토큰 폴백.
+/// 반환: (토큰, 공유토큰인지 여부).
+pub fn resolve_token(source: &str) -> Option<(String, bool)> {
+    if let Some(t) = get_token(source) {
+        return Some((t, false));
+    }
+    get_family_token(source).map(|t| (t, true))
 }
 
 /// 토큰을 삭제한다 (페어링 해제). 이미 없는 항목이어도 오류로 보지 않는다.

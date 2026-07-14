@@ -4,7 +4,9 @@
 
 use txtmyworld_core::discovery::{DiscoveryConfig, DiscoveryEngine, KeywordRecord};
 use txtmyworld_core::models::SourceId;
-use txtmyworld_core::source::{fetch_health, fetch_keywords, fetch_vectors, merge_keywords, SourceConfig, SourceFetch};
+use txtmyworld_core::source::{
+    fetch_health, fetch_keywords, fetch_vectors, merge_keywords, AuthHeader, SourceConfig, SourceFetch,
+};
 use txtmyworld_core::store::Store;
 use txtmyworld_core::vector::{VecKey, VectorSpace, VectorStore};
 use txtmyworld_core::vector_sqlite::SqliteVecStore;
@@ -13,11 +15,22 @@ use crate::dto::{DiscoveryRunSummaryDto, SyncResultDto};
 use crate::embed_select::{local_space, select_embedder, EMBED_DIM};
 use crate::secure;
 
+/// 소스별 인증 헤더 스킴 (TXTSpace hub adapters.rs와 동일 규약):
+/// TXTAIMemory는 X-Pairing-Token, 나머지(diary/brain/hub)는 Authorization: Bearer.
+fn auth_header_for(source_name: &str) -> AuthHeader {
+    if source_name == "txtaimemory" {
+        AuthHeader::XPairingToken
+    } else {
+        AuthHeader::Bearer
+    }
+}
+
 /// 한 소스를 동기화한다: /health 확인 → /keywords 병합 저장 → (지원 시) /vectors 저장.
 /// 실패는 오류를 전파하지 않고 상태 문자열로 격리한다 (한 소스 실패가 나머지에 영향 없게).
 pub fn sync_source(store: &Store, source_name: &str, base_url: &str) -> SyncResultDto {
-    let token = secure::get_token(source_name);
-    let cfg = SourceConfig { base_url: base_url.to_string(), pairing_token: token };
+    // TXTMyWorld 자체 페어링 우선, 없으면 TXTSpace 공유 토큰 폴백. 허브는 토큰 불필요.
+    let token = secure::resolve_token(source_name).map(|(t, _shared)| t);
+    let cfg = SourceConfig::with_header(base_url.to_string(), token, auth_header_for(source_name));
 
     let health = match fetch_health(&cfg) {
         Ok(SourceFetch::Ok(h)) => h,
@@ -118,7 +131,7 @@ pub fn sync_source(store: &Store, source_name: &str, base_url: &str) -> SyncResu
         }
     }
 
-    let fp = secure::get_token(source_name).map(|t| secure::fingerprint(&t));
+    let fp = secure::resolve_token(source_name).map(|(t, _)| secure::fingerprint(&t));
     let _ = store.upsert_source(source_name, base_url, fp.as_deref());
     let _ = store.touch_source_synced(source_name);
 
@@ -129,6 +142,17 @@ pub fn sync_source(store: &Store, source_name: &str, base_url: &str) -> SyncResu
 pub fn sync_all(store: &Store) -> Vec<SyncResultDto> {
     let sources = store.list_sources().unwrap_or_default();
     sources.iter().map(|s| sync_source(store, &s.source, &s.base_url)).collect()
+}
+
+/// 3소스를 각 실측 포트로 직접 등록·동기화한다 (2026-07-14 실측). 공유 토큰 자동 재사용.
+/// 각 소스는 sync_source 안에서 upsert_source로 등록되므로, 이후 sync_all에도 잡힌다.
+pub fn connect_all_direct(store: &Store) -> Vec<SyncResultDto> {
+    const DIRECT_SOURCES: &[(&str, &str)] = &[
+        ("txtdiary", "http://127.0.0.1:47821"),
+        ("txtbrain", "http://127.0.0.1:8811"),
+        ("txtaimemory", "http://127.0.0.1:47531"),
+    ];
+    DIRECT_SOURCES.iter().map(|(name, url)| sync_source(store, name, url)).collect()
 }
 
 /// 발견 파이프라인: 캐시된 키워드 로드 → (미보유분) 임베딩 → sqlite-vec 인메모리 색인 → 3유형 발견 → 영속화

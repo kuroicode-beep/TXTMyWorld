@@ -42,6 +42,7 @@ pub fn run() {
             commands::sync_source,
             commands::sync_all,
             commands::seed_demo_data,
+            commands::connect_all_sources,
             commands::run_discovery,
             commands::list_discoveries,
             commands::dismiss_discovery,

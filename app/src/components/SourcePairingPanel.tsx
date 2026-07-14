@@ -82,8 +82,40 @@ export function SourcePairingPanel({ onToast, onChanged }: Props) {
     onChanged?.();
   }
 
+  const [connecting, setConnecting] = useState(false);
+  async function handleConnectAll() {
+    setConnecting(true);
+    try {
+      const results = await api.connectAllSources();
+      const ok = results.filter((r) => r.status === "ok");
+      const totalKw = ok.reduce((sum, r) => sum + r.keyword_count, 0);
+      if (ok.length === 0) {
+        const first = results.find((r) => r.message);
+        onToast(t("source.connectAllNone", { msg: first?.message ?? "?" }));
+      } else {
+        onToast(t("source.connectAllToast", { ok: ok.length, total: results.length, kw: totalKw }));
+      }
+      await load();
+      onChanged?.();
+    } catch (e) {
+      onToast(t("source.pairFail", { e: String(e) }));
+    } finally {
+      setConnecting(false);
+    }
+  }
+
   return (
     <div className="stack">
+      <div className="panel stack">
+        <h3>{t("source.autoConnectTitle")}</h3>
+        <p className="field-hint">{t("source.autoConnectHint")}</p>
+        <div className="row">
+          <button className="primary" onClick={handleConnectAll} disabled={connecting}>
+            {connecting ? t("source.connecting") : t("source.connectAll")}
+          </button>
+        </div>
+      </div>
+
       <form className="panel stack" onSubmit={handlePair} aria-label={t("source.title")}>
         <h3>{t("source.title")}</h3>
         <div className="row">
@@ -114,8 +146,8 @@ export function SourcePairingPanel({ onToast, onChanged }: Props) {
         ) : (
           <div>
             <label htmlFor="pair-token">{t("source.tokenLabel")}</label>
-            <input id="pair-token" type="password" value={form.token} onChange={(e) => setForm((f) => ({ ...f, token: e.target.value }))} />
-            <p className="field-hint">{t("source.tokenHint")}</p>
+            <input id="pair-token" type="password" value={form.token} onChange={(e) => setForm((f) => ({ ...f, token: e.target.value }))} placeholder={t("source.tokenOptionalPlaceholder")} />
+            <p className="field-hint">{t("source.tokenSharedHint")}</p>
           </div>
         )}
         <div className="row">

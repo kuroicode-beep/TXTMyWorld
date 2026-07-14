@@ -140,6 +140,7 @@ export const api = {
 
   syncSource: (source: string, baseUrl: string) => invoke<SyncResultDto>("sync_source", { source, baseUrl }),
   syncAll: () => invoke<SyncResultDto[]>("sync_all"),
+  connectAllSources: () => invoke<SyncResultDto[]>("connect_all_sources"),
   seedDemoData: () => invoke<number>("seed_demo_data"),
 
   runDiscovery: () => invoke<DiscoveryRunSummaryDto>("run_discovery"),

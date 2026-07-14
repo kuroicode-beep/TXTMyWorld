@@ -151,7 +151,19 @@ pub struct DateRange {
     pub to: Option<String>,
 }
 
-/// /keywords 응답
+/// TXTAIMemory 전용 /keywords 항목 — 이 앱만 `{keyword, weight, ai_id}` 형태의 `items` 배열을
+/// 쓴다(다른 소스는 `keywords`). weight를 frequency로, ai_id는 메타로 매핑한다.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiMemoryItem {
+    #[serde(alias = "text")]
+    pub keyword: String,
+    #[serde(default)]
+    pub weight: f64,
+    #[serde(default)]
+    pub ai_id: Option<serde_json::Value>,
+}
+
+/// /keywords 응답. 일반 소스는 `keywords`, TXTAIMemory는 `items`를 채운다 — 둘 다 default라 어느 쪽이든 파싱된다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeywordsResponse {
     pub schema_version: String,
@@ -162,6 +174,9 @@ pub struct KeywordsResponse {
     pub date_range: Option<DateRange>,
     #[serde(default)]
     pub keywords: Vec<Keyword>,
+    /// TXTAIMemory 형태(`items`). merge_keywords가 keywords로 접어 넣는다.
+    #[serde(default)]
+    pub items: Vec<AiMemoryItem>,
 }
 
 /// /vectors 응답의 개별 벡터 레코드 (X1 배치·증분 동기화)
