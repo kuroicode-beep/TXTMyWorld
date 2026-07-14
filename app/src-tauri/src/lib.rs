@@ -6,6 +6,7 @@ mod dto;
 mod embed_select;
 mod feedback_client;
 mod pipeline;
+mod registry;
 mod secure;
 mod state;
 

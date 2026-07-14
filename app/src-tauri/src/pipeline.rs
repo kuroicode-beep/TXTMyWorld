@@ -24,6 +24,7 @@ fn fallback_hash_embedder() -> SelectedEmbedder {
         dim: EMBED_DIM,
     }
 }
+use crate::registry;
 use crate::secure;
 
 /// 소스별 인증 헤더 스킴 (TXTSpace hub adapters.rs와 동일 규약):
@@ -160,15 +161,34 @@ pub fn sync_all(store: &Store, ollama_base_url: &str) -> Vec<SyncResultDto> {
     sources.iter().map(|s| sync_source(store, &s.source, &s.base_url, ollama_base_url)).collect()
 }
 
+/// 소스 이름 → 레지스트리 조회 키. TXTAIMemory는 레지스트리에 control/keyword 두 항목을 따로
+/// 등록하므로, TXTMyWorld가 실제로 붙는 쪽(Keyword API)의 키로 조회한다.
+fn registry_key_for(source_name: &str) -> &str {
+    match source_name {
+        "txtaimemory" => "txtaimemory-keyword",
+        other => other,
+    }
+}
+
 /// 3소스를 각 실측 포트로 직접 등록·동기화한다 (2026-07-14 실측). 공유 토큰 자동 재사용.
 /// 각 소스는 sync_source 안에서 upsert_source로 등록되므로, 이후 sync_all에도 잡힌다.
+/// 레지스트리(%LOCALAPPDATA%\SVIL\registry.json)에 항목이 있으면 그 포트를 우선 쓰고,
+/// 없으면 실측 하드코딩 기본값으로 폴백한다(TXT 패밀리 Phase 5, 하위호환).
 pub fn connect_all_direct(store: &Store, ollama_base_url: &str) -> Vec<SyncResultDto> {
     const DIRECT_SOURCES: &[(&str, &str)] = &[
         ("txtdiary", "http://127.0.0.1:47821"),
         ("txtbrain", "http://127.0.0.1:8811"),
         ("txtaimemory", "http://127.0.0.1:47531"),
     ];
-    DIRECT_SOURCES.iter().map(|(name, url)| sync_source(store, name, url, ollama_base_url)).collect()
+    DIRECT_SOURCES
+        .iter()
+        .map(|(name, fallback_url)| {
+            let url = registry::lookup_port(registry_key_for(name))
+                .map(|port| format!("http://127.0.0.1:{port}"))
+                .unwrap_or_else(|| fallback_url.to_string());
+            sync_source(store, name, &url, ollama_base_url)
+        })
+        .collect()
 }
 
 /// 발견 파이프라인: 캐시된 키워드 로드 → (미보유분) 임베딩 → sqlite-vec 인메모리 색인 → 3유형 발견 → 영속화

@@ -22,7 +22,7 @@ pub mod vector;
 pub mod vector_sqlite;
 
 /// 앱 버전 단일 소스(루트 VERSION 파일과 동기 유지)
-pub const APP_VERSION: &str = "0.2.6";
+pub const APP_VERSION: &str = "0.2.7";
 
 /// 버전 히스토리 (버전, 날짜, 요약) — UI 설정의 "업데이트 히스토리" 메뉴가 이 목록을 렌더링한다.
 /// 최신 버전이 배열 끝에 오도록 유지한다(화면에서는 최신순으로 뒤집어 표시).
@@ -89,6 +89,14 @@ pub const VERSION_HISTORY: &[(&str, &str, &str)] = &[
          페이로드를 그 계약(content/source/summary/origin_app/external_id)에 맞게 변환하도록 \
          구현. 페어링 토큰 자동 첨부(공유 토큰 재사용), external_id로 같은 발견 재환류 시 \
          원장이 중복 누적되지 않음(TXTAIMemory 쪽 멱등 upsert와 짝).",
+    ),
+    (
+        "0.2.7",
+        "2026-07-15",
+        "3소스 직접 연결이 %LOCALAPPDATA%\\SVIL\\registry.json을 우선 조회하도록 변경 — 레지스트리에 \
+         항목이 있으면(다른 TXT 패밀리 앱이 기록해 둔 실제 기동 포트) 그 포트를 쓰고, 없으면 기존 \
+         실측 하드코딩 값으로 폴백한다. TXTMyWorld 자신은 외부에 노출하는 포트가 없어 레지스트리에 \
+         기록하지는 않고 조회만 한다(TXT 패밀리 디스커버리 레지스트리, Phase 5).",
     ),
 ];
 
