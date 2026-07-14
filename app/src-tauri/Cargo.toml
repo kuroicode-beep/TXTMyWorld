@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.2.4"
+version = "0.2.5"
 description = "TXTMyWorld — TXT 패밀리 연결·생성 레이어"
 authors = ["SVIL"]
 edition = "2021"

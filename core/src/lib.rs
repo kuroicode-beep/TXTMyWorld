@@ -22,7 +22,7 @@ pub mod vector;
 pub mod vector_sqlite;
 
 /// 앱 버전 단일 소스(루트 VERSION 파일과 동기 유지)
-pub const APP_VERSION: &str = "0.2.4";
+pub const APP_VERSION: &str = "0.2.5";
 
 /// 버전 히스토리 (버전, 날짜, 요약) — UI 설정의 "업데이트 히스토리" 메뉴가 이 목록을 렌더링한다.
 /// 최신 버전이 배열 끝에 오도록 유지한다(화면에서는 최신순으로 뒤집어 표시).
@@ -71,6 +71,15 @@ pub const VERSION_HISTORY: &[(&str, &str, &str)] = &[
         "TXTAIMemory가 스키마 v2.0(keywords 배열)을 items와 함께 보내기 시작한 것에 대응 — merge_keywords가 \
          keywords가 있으면 items(레거시)는 건너뛰도록 수정해 이중 집계를 방지. keywords 쪽이 실제 first_seen/last_seen을 \
          담고 있어 AIMemory 키워드의 시간축 발견(temporal_overlap) 정확도가 개선됨(TXT 패밀리 스키마 통합 Phase 2).",
+    ),
+    (
+        "0.2.5",
+        "2026-07-15",
+        "X1 벡터 공유가 실제로는 항상 버려지고 있던 버그 수정 — sync_source가 소스 공유 벡터와의 공간 정합 \
+         판정을 \"bge-m3/1024\"로 고정 비교하고 있었다(이 기기의 실제 선택 모델은 nomic-embed-text/768). \
+         TXTDiary·TXTBrain·TXTAIMemory 3소스가 방금 /vectors를 제공하기 시작했는데도 이 하드코딩 때문에 \
+         전부 \"불일치\"로 판정되어 조용히 버려지고 있었음. select_embedder()로 실제 로컬 모델을 조회해 \
+         비교하도록 수정 — 이제 실제로 소스 공유 벡터를 받아 저장한다(전략 A).",
     ),
 ];
 

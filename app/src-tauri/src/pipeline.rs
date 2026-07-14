@@ -38,7 +38,7 @@ fn auth_header_for(source_name: &str) -> AuthHeader {
 
 /// 한 소스를 동기화한다: /health 확인 → /keywords 병합 저장 → (지원 시) /vectors 저장.
 /// 실패는 오류를 전파하지 않고 상태 문자열로 격리한다 (한 소스 실패가 나머지에 영향 없게).
-pub fn sync_source(store: &Store, source_name: &str, base_url: &str) -> SyncResultDto {
+pub fn sync_source(store: &Store, source_name: &str, base_url: &str, ollama_base_url: &str) -> SyncResultDto {
     // TXTMyWorld 자체 페어링 우선, 없으면 TXTSpace 공유 토큰 폴백. 허브는 토큰 불필요.
     let token = secure::resolve_token(source_name).map(|(t, _shared)| t);
     let cfg = SourceConfig::with_header(base_url.to_string(), token, auth_header_for(source_name));
@@ -123,9 +123,12 @@ pub fn sync_source(store: &Store, source_name: &str, base_url: &str) -> SyncResu
                 dim: cap.dim.unwrap_or(0),
                 normalized: cap.normalized.unwrap_or(false),
             };
-            // 우리가 선호하는 공간(bge-m3/1024)과 일치할 때만 소스 공유 벡터를 그대로 받는다.
-            // 불일치하면 저장하지 않고 discovery 단계의 로컬 재임베딩(전략 B)에 맡긴다.
-            if source_space.is_compatible(&local_space_for("bge-m3", EMBED_DIM)) {
+            // 우리가 실제로 쓰는 로컬 모델(설치 여부에 따라 기기마다 다름 — 이 기기는 nomic-embed-text)과
+            // 일치할 때만 소스 공유 벡터를 그대로 받는다. bge-m3로 고정 비교하면, bge-m3가 미설치된
+            // 기기에서는 소스가 실제로 호환 가능한 벡터를 보내줘도 항상 불일치 판정되어 버려진다
+            // (2026-07-15 발견 — 3소스가 방금 /vectors를 제공하기 시작한 시점에 확인됨).
+            let local = select_embedder(ollama_base_url);
+            if source_space.is_compatible(&local_space_for(&local.model_name, local.dim)) {
                 let mut cursor: Option<String> = None;
                 while let Ok(SourceFetch::Ok(resp)) = fetch_vectors(&cfg, None, cursor.as_deref()) {
                     for v in &resp.vectors {
@@ -152,20 +155,20 @@ pub fn sync_source(store: &Store, source_name: &str, base_url: &str) -> SyncResu
 }
 
 /// 등록된 모든 소스를 동기화한다 (소스 하나 실패해도 나머지는 계속)
-pub fn sync_all(store: &Store) -> Vec<SyncResultDto> {
+pub fn sync_all(store: &Store, ollama_base_url: &str) -> Vec<SyncResultDto> {
     let sources = store.list_sources().unwrap_or_default();
-    sources.iter().map(|s| sync_source(store, &s.source, &s.base_url)).collect()
+    sources.iter().map(|s| sync_source(store, &s.source, &s.base_url, ollama_base_url)).collect()
 }
 
 /// 3소스를 각 실측 포트로 직접 등록·동기화한다 (2026-07-14 실측). 공유 토큰 자동 재사용.
 /// 각 소스는 sync_source 안에서 upsert_source로 등록되므로, 이후 sync_all에도 잡힌다.
-pub fn connect_all_direct(store: &Store) -> Vec<SyncResultDto> {
+pub fn connect_all_direct(store: &Store, ollama_base_url: &str) -> Vec<SyncResultDto> {
     const DIRECT_SOURCES: &[(&str, &str)] = &[
         ("txtdiary", "http://127.0.0.1:47821"),
         ("txtbrain", "http://127.0.0.1:8811"),
         ("txtaimemory", "http://127.0.0.1:47531"),
     ];
-    DIRECT_SOURCES.iter().map(|(name, url)| sync_source(store, name, url)).collect()
+    DIRECT_SOURCES.iter().map(|(name, url)| sync_source(store, name, url, ollama_base_url)).collect()
 }
 
 /// 발견 파이프라인: 캐시된 키워드 로드 → (미보유분) 임베딩 → sqlite-vec 인메모리 색인 → 3유형 발견 → 영속화
@@ -343,7 +346,7 @@ mod tests {
     #[ignore = "requires a live local TXTSpace-hub on 127.0.0.1:47540"]
     fn sync_source_against_live_txtspace_hub() {
         let store = Store::open_in_memory().unwrap();
-        let result = sync_source(&store, "txtspace-hub", "http://127.0.0.1:47540");
+        let result = sync_source(&store, "txtspace-hub", "http://127.0.0.1:47540", "http://127.0.0.1:11434");
 
         assert_eq!(result.status, "ok", "message={:?}", result.message);
         assert!(result.keyword_count > 0, "허브에서 키워드를 하나도 못 받아옴");

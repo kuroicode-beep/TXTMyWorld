@@ -113,16 +113,27 @@ pub fn check_source_health(base_url: String, source: String) -> SourceStatusDto 
 // 동기화
 // ---------------------------------------------------------------------------
 
+fn resolve_ollama_url(store: &txtmyworld_core::store::Store) -> String {
+    store
+        .get_setting(SETTING_OLLAMA_URL)
+        .ok()
+        .flatten()
+        .and_then(|v| v.as_str().map(String::from))
+        .unwrap_or_else(default_ollama_url)
+}
+
 #[tauri::command]
 pub fn sync_source(state: State<AppState>, source: String, base_url: String) -> Result<SyncResultDto, String> {
     let store = state.store.lock().map_err(|e| e.to_string())?;
-    Ok(pipeline::sync_source(&store, &source, &base_url))
+    let ollama_url = resolve_ollama_url(&store);
+    Ok(pipeline::sync_source(&store, &source, &base_url, &ollama_url))
 }
 
 #[tauri::command]
 pub fn sync_all(state: State<AppState>) -> Result<Vec<SyncResultDto>, String> {
     let store = state.store.lock().map_err(|e| e.to_string())?;
-    Ok(pipeline::sync_all(&store))
+    let ollama_url = resolve_ollama_url(&store);
+    Ok(pipeline::sync_all(&store, &ollama_url))
 }
 
 /// 데모 데이터 시드 (실 소스 없이 발견 흐름을 체험) — 명시적 라벨링된 데모 전용 액션
@@ -137,7 +148,8 @@ pub fn seed_demo_data(state: State<AppState>) -> Result<usize, String> {
 #[tauri::command]
 pub fn connect_all_sources(state: State<AppState>) -> Result<Vec<SyncResultDto>, String> {
     let store = state.store.lock().map_err(|e| e.to_string())?;
-    Ok(pipeline::connect_all_direct(&store))
+    let ollama_url = resolve_ollama_url(&store);
+    Ok(pipeline::connect_all_direct(&store, &ollama_url))
 }
 
 // ---------------------------------------------------------------------------
@@ -153,12 +165,7 @@ pub fn run_discovery(state: State<AppState>) -> Result<DiscoveryRunSummaryDto, S
         .flatten()
         .and_then(|v| serde_json::from_value::<DiscoveryConfig>(v).ok())
         .unwrap_or_default();
-    let ollama_url = store
-        .get_setting(SETTING_OLLAMA_URL)
-        .ok()
-        .flatten()
-        .and_then(|v| v.as_str().map(String::from))
-        .unwrap_or_else(default_ollama_url);
+    let ollama_url = resolve_ollama_url(&store);
     Ok(pipeline::run_discovery(&store, config, &ollama_url))
 }
 
@@ -365,12 +372,7 @@ pub fn set_settings(state: State<AppState>, settings: SettingsDto) -> Result<(),
 #[tauri::command]
 pub fn get_embedder_status(state: State<AppState>) -> Result<serde_json::Value, String> {
     let store = state.store.lock().map_err(|e| e.to_string())?;
-    let ollama_url = store
-        .get_setting(SETTING_OLLAMA_URL)
-        .ok()
-        .flatten()
-        .and_then(|v| v.as_str().map(String::from))
-        .unwrap_or_else(default_ollama_url);
+    let ollama_url = resolve_ollama_url(&store);
     let selected = embed_select::select_embedder(&ollama_url);
     Ok(serde_json::json!({
         "model": selected.model_name,
