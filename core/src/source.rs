@@ -112,17 +112,20 @@ pub fn merge_keywords(responses: &[KeywordsResponse]) -> Vec<KeywordRecord> {
                 last_seen: parse_date(&kw.last_seen),
             });
         }
-        // TXTAIMemory 형태(items) — weight를 frequency로, normalized_text는 keyword로 폴백.
-        for item in &resp.items {
-            out.push(KeywordRecord {
-                source: resp.source.clone(),
-                text: item.keyword.clone(),
-                normalized_text: item.keyword.clone(),
-                frequency: item.weight,
-                avg_emotion_score: 0.0,
-                first_seen: None,
-                last_seen: None,
-            });
+        // TXTAIMemory 레거시 형태(items) — v2.0 `keywords`를 이미 함께 보낸 응답(전환기 dual-schema)이면
+        // 중복 집계를 막기 위해 건너뛴다. weight를 frequency로, normalized_text는 keyword로 폴백.
+        if resp.keywords.is_empty() {
+            for item in &resp.items {
+                out.push(KeywordRecord {
+                    source: resp.source.clone(),
+                    text: item.keyword.clone(),
+                    normalized_text: item.keyword.clone(),
+                    frequency: item.weight,
+                    avg_emotion_score: 0.0,
+                    first_seen: None,
+                    last_seen: None,
+                });
+            }
         }
     }
     // 결정적 순서: (source, normalized_text)
@@ -253,6 +256,22 @@ mod tests {
         let kw = merged.iter().find(|r| r.text == "관측자").unwrap();
         assert_eq!(kw.frequency, 7.5, "weight가 frequency로 매핑돼야 함");
         assert_eq!(kw.normalized_text, "관측자", "normalized_text는 keyword로 폴백");
+    }
+
+    // TXTAIMemory v0.9.3+가 하위호환을 위해 keywords(v2.0)와 items(v1.0)를 같은 응답에 동시에
+    // 보낸다 — items까지 또 병합하면 이중 집계가 되므로 keywords가 있으면 items는 무시해야 한다.
+    #[test]
+    fn merge_prefers_keywords_over_items_when_both_present() {
+        let resp: KeywordsResponse = serde_json::from_str(
+            r#"{"schema_version":"2.0","source":"txtaimemory",
+                "keywords":[{"text":"관측자","normalized_text":"관측자","frequency":7.5,
+                             "first_seen":"2026-07-01","last_seen":"2026-07-10"}],
+                "items":[{"keyword":"관측자","weight":7.5,"ai_id":null}]}"#,
+        )
+        .unwrap();
+        let merged = merge_keywords(&[resp]);
+        assert_eq!(merged.len(), 1, "keywords와 items가 같은 데이터를 겹쳐 보내면 한 번만 집계돼야 함");
+        assert!(merged[0].first_seen.is_some(), "keywords 쪽의 first_seen이 살아있어야 함");
     }
 
     // 병합: source별 별도 항목 + 결정적 순서 + 날짜 파싱

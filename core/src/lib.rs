@@ -22,7 +22,7 @@ pub mod vector;
 pub mod vector_sqlite;
 
 /// 앱 버전 단일 소스(루트 VERSION 파일과 동기 유지)
-pub const APP_VERSION: &str = "0.2.3";
+pub const APP_VERSION: &str = "0.2.4";
 
 /// 버전 히스토리 (버전, 날짜, 요약) — UI 설정의 "업데이트 히스토리" 메뉴가 이 목록을 렌더링한다.
 /// 최신 버전이 배열 끝에 오도록 유지한다(화면에서는 최신순으로 뒤집어 표시).
@@ -64,6 +64,13 @@ pub const VERSION_HISTORY: &[(&str, &str, &str)] = &[
          Ollama 가동만 확인하고 bge-m3 미설치 시에도 그걸로 시도해 임베딩이 전부 실패했다 — /api/tags로 실제 설치된 \
          임베딩 모델(nomic-embed-text 등)을 감지·선택하고 실패 시 해시 폴백. 의미 임베딩에 맞춰 발견 임계값 상향 \
          (0.6→0.85). 실측: 195키워드/3소스 → 발견 98건(브리지 69·갭 19·클러스터 10).",
+    ),
+    (
+        "0.2.4",
+        "2026-07-15",
+        "TXTAIMemory가 스키마 v2.0(keywords 배열)을 items와 함께 보내기 시작한 것에 대응 — merge_keywords가 \
+         keywords가 있으면 items(레거시)는 건너뛰도록 수정해 이중 집계를 방지. keywords 쪽이 실제 first_seen/last_seen을 \
+         담고 있어 AIMemory 키워드의 시간축 발견(temporal_overlap) 정확도가 개선됨(TXT 패밀리 스키마 통합 Phase 2).",
     ),
 ];
 
