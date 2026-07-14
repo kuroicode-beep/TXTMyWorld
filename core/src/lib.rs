@@ -22,7 +22,7 @@ pub mod vector;
 pub mod vector_sqlite;
 
 /// 앱 버전 단일 소스(루트 VERSION 파일과 동기 유지)
-pub const APP_VERSION: &str = "0.2.0";
+pub const APP_VERSION: &str = "0.2.1";
 
 /// 버전 히스토리 (버전, 날짜, 요약) — UI 설정의 "업데이트 히스토리" 메뉴가 이 목록을 렌더링한다.
 /// 최신 버전이 배열 끝에 오도록 유지한다(화면에서는 최신순으로 뒤집어 표시).
@@ -39,6 +39,13 @@ pub const VERSION_HISTORY: &[(&str, &str, &str)] = &[
         "SVIL 표준 디자인 전면 적용 — 고대비 다크 팔레트, 교보손글씨2019 기본 + 글꼴 8종, 화면(언어 5종·글자크기 3단계·\
          글꼴) 설정 메뉴, 전 화면 다국어(ko/en/ja/zh/vi), Alt+←/→ 뒤로/앞으로 내비게이션. 임시 접근성 토글은 SVIL \
          표준으로 대체.",
+    ),
+    (
+        "0.2.1",
+        "2026-07-14",
+        "실제 3앱(TXTDiary/TXTBrain/TXTAIMemory) 연동 버그 수정 — 실배포 스키마(keyword/cooccurrences/항목별 \
+         source) 수용, 소스 동기화 파싱 실패를 조용히 삼키던 버그 제거, 실측 포트로 기본값 교정, 토큰 없이 3소스를 \
+         한 번에 받는 TXTSpace 허브 연결 옵션 추가. 실제 로컬 서비스 대상 라이브 검증 완료(190개 키워드 수신).",
     ),
 ];
 

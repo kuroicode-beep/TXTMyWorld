@@ -121,7 +121,10 @@ export interface EmbedderStatus {
   dim: number;
 }
 
-export const SOURCE_IDS = ["txtdiary", "txtbrain", "txtaimemory"] as const;
+// txtspace-hub는 실제 소스가 아니라 3소스(txtdiary/txtbrain/txtaimemory)를 토큰 없이
+// 한 번에 통합 제공하는 로컬 허브(TXTSpace-hub, 기본 포트 47540) — 개별 소스마다 각 앱에서
+// 토큰을 발급받아야 하는 번거로움 없이 한 번의 연결로 세 소스를 전부 받아온다.
+export const SOURCE_IDS = ["txtdiary", "txtbrain", "txtaimemory", "txtspace-hub"] as const;
 export type SourceIdStr = (typeof SOURCE_IDS)[number];
 
 export const api = {

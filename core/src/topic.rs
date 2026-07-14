@@ -96,7 +96,7 @@ mod tests {
                 source: SourceId::TxtDiary,
                 text: "관측자".into(),
                 normalized_text: "관측자".into(),
-                frequency: 12,
+                frequency: 12.0,
                 avg_emotion_score: 0.3,
                 first_seen: None,
                 last_seen: None,

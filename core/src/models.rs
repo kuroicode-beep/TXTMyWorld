@@ -88,11 +88,14 @@ pub struct HealthResponse {
     pub vector_capability: Option<VectorCapability>,
 }
 
-/// 키워드 동시 출현 항목
+/// 키워드 동시 출현 항목.
+/// 실서비스(TXTSpace-hub 등)는 이름을 `keyword`로, count를 정수 아닌 부동소수(예: 1.0)로 보낸다 —
+/// alias와 f64로 두 표기를 모두 수용한다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cooccurrence {
+    #[serde(alias = "keyword")]
     pub text: String,
-    pub count: u64,
+    pub count: f64,
 }
 
 /// 키워드 인라인 임베딩 (X1, `include=embedding` 옵트인)
@@ -105,23 +108,35 @@ pub struct EmbeddingPayload {
     pub vector: Vec<f32>,
 }
 
-/// 공통 스키마의 키워드 항목 (모르는 확장 필드는 serde가 무시 — graceful)
+/// 공통 스키마의 키워드 항목 (모르는 확장 필드는 serde가 무시 — graceful).
+///
+/// PRD 원안 스키마(`text`/`cooccurrence`/정수 `frequency`)와 실서비스(TXTSpace-hub 등)가 실제로
+/// 내보내는 형태(`keyword`/`cooccurrences`/부동소수 `frequency`, 항목별 `source`)가 갈라져 있어
+/// alias와 관대한 타입으로 양쪽을 모두 수용한다. 항목별 `source`는 다중 소스를 한 번에 통합
+/// 제공하는 허브(예: TXTSpace-hub)를 위한 필드 — 없으면 봉투(KeywordsResponse)의 `source`를 쓴다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Keyword {
+    #[serde(alias = "keyword")]
     pub text: String,
+    /// 실서비스 일부 항목은 이 필드를 아예 안 보낸다 — 없으면 병합 단계(merge_keywords)에서
+    /// text로부터 채운다(비어 있는 채로 두지 않는다: normalized_text가 KNN/캐시 키이기 때문).
+    #[serde(default)]
     pub normalized_text: String,
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
-    pub frequency: u64,
+    pub frequency: f64,
     #[serde(default)]
     pub avg_emotion_score: f32,
     #[serde(default)]
     pub first_seen: Option<String>,
     #[serde(default)]
     pub last_seen: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "cooccurrences")]
     pub cooccurrence: Vec<Cooccurrence>,
+    /// 항목별 소스(허브 응답용). 없으면 KeywordsResponse.source로 폴백.
+    #[serde(default)]
+    pub source: Option<SourceId>,
     /// v1.1 인라인 임베딩 (없으면 None → 전략 B 폴백)
     #[serde(default)]
     pub embedding: Option<EmbeddingPayload>,
@@ -222,7 +237,7 @@ mod tests {
         let resp: KeywordsResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.source, SourceId::TxtDiary);
         assert_eq!(resp.keywords.len(), 1);
-        assert_eq!(resp.keywords[0].frequency, 12);
+        assert_eq!(resp.keywords[0].frequency, 12.0);
         assert!(resp.keywords[0].embedding.is_none());
     }
 
@@ -276,6 +291,43 @@ mod tests {
         let json = r#"{"schema_version": "1.0", "source": "txtfuture", "keywords": []}"#;
         let resp: KeywordsResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.source, SourceId::Unknown);
+    }
+
+    // 실제 TXTSpace-hub(127.0.0.1:47540)가 보내는 형태 그대로를 픽스처로 검증한다.
+    // text 대신 keyword, cooccurrence 대신 cooccurrences, frequency/count가 부동소수,
+    // source가 항목마다(봉투가 아니라) 붙는다 — 전부 실제 응답에서 그대로 캡처한 값.
+    #[test]
+    fn parse_real_hub_response_shape() {
+        let json = r#"{
+            "keywords": [{
+                "avg_emotion_score": 0.45,
+                "category": "topic",
+                "cooccurrences": [
+                    {"count": 1.0, "keyword": "생각"},
+                    {"count": 1.0, "keyword": "우주 맵"}
+                ],
+                "first_seen": "2026-07-08",
+                "frequency": 2.0,
+                "keyword": "양자역학",
+                "last_seen": "2026-07-09",
+                "meta": {},
+                "normalized_text": "양자역학",
+                "source": "txtdiary"
+            }],
+            "schema_version": "1.1",
+            "source": "txtspace-hub",
+            "sources": {"txtdiary": {"status": "live"}}
+        }"#;
+        let resp: KeywordsResponse = serde_json::from_str(json).unwrap();
+        // 봉투 source는 허브 자신("txtspace-hub") — SourceId가 모르는 값이라 Unknown으로 무해 처리
+        assert_eq!(resp.source, SourceId::Unknown);
+        assert_eq!(resp.keywords.len(), 1);
+        let kw = &resp.keywords[0];
+        assert_eq!(kw.text, "양자역학", "keyword 별칭이 text로 매핑돼야 함");
+        assert_eq!(kw.frequency, 2.0, "부동소수 frequency를 그대로 받아야 함");
+        assert_eq!(kw.cooccurrence.len(), 2, "cooccurrences 별칭이 매핑돼야 함");
+        assert_eq!(kw.cooccurrence[0].text, "생각");
+        assert_eq!(kw.source, Some(SourceId::TxtDiary), "항목별 source가 파싱돼야 함");
     }
 
     // as_str/parse_lenient 왕복 및 모르는 문자열의 graceful 처리

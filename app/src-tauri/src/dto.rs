@@ -35,7 +35,7 @@ pub struct KeywordDto {
     pub source_label: String,
     pub text: String,
     pub normalized_text: String,
-    pub frequency: u64,
+    pub frequency: f64,
     pub avg_emotion_score: f32,
     pub deeplink: String,
 }

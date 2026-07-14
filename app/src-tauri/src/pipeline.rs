@@ -50,17 +50,43 @@ pub fn sync_source(store: &Store, source_name: &str, base_url: &str) -> SyncResu
         }
     };
 
-    let mut keyword_count = 0usize;
-    match fetch_keywords(&cfg, "") {
+    let keyword_count = match fetch_keywords(&cfg, "") {
         Ok(SourceFetch::Ok(resp)) => {
             let records = merge_keywords(std::slice::from_ref(&resp));
             for rec in &records {
                 let _ = store.upsert_keyword_cache(rec);
             }
-            keyword_count = records.len();
+            records.len()
         }
-        Ok(SourceFetch::UpdateRequired) | Ok(SourceFetch::Offline(_)) | Err(_) => {}
-    }
+        Ok(SourceFetch::UpdateRequired) => {
+            return SyncResultDto {
+                source: source_name.into(),
+                status: "update_required".into(),
+                keyword_count: 0,
+                vector_count: 0,
+                message: Some("/keywords 스키마 버전이 앱보다 높습니다. 앱 업데이트가 필요합니다.".into()),
+            }
+        }
+        Ok(SourceFetch::Offline(e)) => {
+            return SyncResultDto {
+                source: source_name.into(),
+                status: "offline".into(),
+                keyword_count: 0,
+                vector_count: 0,
+                message: Some(format!("/keywords 연결 실패: {e}")),
+            }
+        }
+        // 조용히 삼키지 않는다 — 파싱 실패(스키마 불일치 등)는 반드시 사용자에게 보인다.
+        Err(e) => {
+            return SyncResultDto {
+                source: source_name.into(),
+                status: "offline".into(),
+                keyword_count: 0,
+                vector_count: 0,
+                message: Some(format!("/keywords 응답 파싱 실패: {e}")),
+            }
+        }
+    };
 
     // X1 소스측 임베딩 공유 — 통합 스펙 §2.5-3 공간 정합 판정: 로컬 기준 공간과 일치할 때만 그대로
     // 받아들인다("전략 A"). 불일치하면 저장하지 않고 조용히 건너뛴다 — discovery 단계에서 해당
@@ -184,7 +210,7 @@ pub fn seed_demo_data(store: &Store) -> usize {
             source: SourceId::TxtDiary,
             text: "관측자".into(),
             normalized_text: "관측자".into(),
-            frequency: 12,
+            frequency: 12.0,
             avg_emotion_score: 0.3,
             first_seen: d("2026-05-01"),
             last_seen: d("2026-07-10"),
@@ -193,7 +219,7 @@ pub fn seed_demo_data(store: &Store) -> usize {
             source: SourceId::TxtBrain,
             text: "측정 문제".into(),
             normalized_text: "측정문제".into(),
-            frequency: 8,
+            frequency: 8.0,
             avg_emotion_score: 0.1,
             first_seen: d("2026-05-15"),
             last_seen: d("2026-07-01"),
@@ -202,7 +228,7 @@ pub fn seed_demo_data(store: &Store) -> usize {
             source: SourceId::TxtAiMemory,
             text: "observer effect".into(),
             normalized_text: "observereffect".into(),
-            frequency: 5,
+            frequency: 5.0,
             avg_emotion_score: 0.0,
             first_seen: d("2026-06-01"),
             last_seen: d("2026-07-10"),
@@ -211,7 +237,7 @@ pub fn seed_demo_data(store: &Store) -> usize {
             source: SourceId::TxtBrain,
             text: "quantum decoherence".into(),
             normalized_text: "quantumdecoherence".into(),
-            frequency: 9,
+            frequency: 9.0,
             avg_emotion_score: 0.0,
             first_seen: d("2026-06-01"),
             last_seen: d("2026-06-30"),
@@ -220,7 +246,7 @@ pub fn seed_demo_data(store: &Store) -> usize {
             source: SourceId::TxtDiary,
             text: "몰입".into(),
             normalized_text: "몰입".into(),
-            frequency: 5,
+            frequency: 5.0,
             avg_emotion_score: -0.1,
             first_seen: d("2026-04-01"),
             last_seen: d("2026-04-30"),
@@ -229,7 +255,7 @@ pub fn seed_demo_data(store: &Store) -> usize {
             source: SourceId::TxtDiary,
             text: "몰입".into(),
             normalized_text: "몰입".into(),
-            frequency: 7,
+            frequency: 7.0,
             avg_emotion_score: 0.6,
             first_seen: d("2026-06-01"),
             last_seen: d("2026-06-30"),
@@ -238,7 +264,7 @@ pub fn seed_demo_data(store: &Store) -> usize {
             source: SourceId::TxtDiary,
             text: "산책".into(),
             normalized_text: "산책".into(),
-            frequency: 6,
+            frequency: 6.0,
             avg_emotion_score: 0.4,
             first_seen: d("2026-06-01"),
             last_seen: d("2026-06-30"),
@@ -251,4 +277,31 @@ pub fn seed_demo_data(store: &Store) -> usize {
         }
     }
     n
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use txtmyworld_core::models::SourceId;
+
+    // 실제로 켜져 있는 TXTSpace-hub(127.0.0.1:47540, 토큰 불필요, 3소스 통합)를 상대로
+    // sync_source가 진짜 키워드를 받아오는지 검증한다. 라이브 로컬 서비스 의존이라 기본
+    // 테스트 스위트에서는 제외(#[ignore]) — `cargo test -- --ignored`로 수동 실행.
+    #[test]
+    #[ignore = "requires a live local TXTSpace-hub on 127.0.0.1:47540"]
+    fn sync_source_against_live_txtspace_hub() {
+        let store = Store::open_in_memory().unwrap();
+        let result = sync_source(&store, "txtspace-hub", "http://127.0.0.1:47540");
+
+        assert_eq!(result.status, "ok", "message={:?}", result.message);
+        assert!(result.keyword_count > 0, "허브에서 키워드를 하나도 못 받아옴");
+
+        let records = store.list_keyword_cache().unwrap();
+        let sources: std::collections::BTreeSet<_> = records.iter().map(|r| r.source.clone()).collect();
+        // 허브 자신(txtspace-hub→Unknown)이 아니라 진짜 origin 3종으로 태깅돼야 한다
+        assert!(sources.contains(&SourceId::TxtBrain) || sources.contains(&SourceId::TxtAiMemory) || sources.contains(&SourceId::TxtDiary));
+        assert!(!sources.contains(&SourceId::Unknown), "허브 자신의 source가 새어나오면 안 됨");
+
+        println!("동기화된 키워드 {}개, 소스: {:?}", result.keyword_count, sources);
+    }
 }

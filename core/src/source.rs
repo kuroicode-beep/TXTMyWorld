@@ -69,15 +69,19 @@ fn parse_date(s: &Option<String>) -> Option<NaiveDate> {
         .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
 }
 
-/// 여러 소스의 /keywords 응답을 발견 엔진 입력 레코드로 병합 (source별 별도 항목 유지 — PRD §6.1)
+/// 여러 소스의 /keywords 응답을 발견 엔진 입력 레코드로 병합 (source별 별도 항목 유지 — PRD §6.1).
+/// 항목이 자기 source를 직접 들고 있으면(TXTSpace-hub 같은 다중 소스 통합 응답) 그것을 쓰고,
+/// 없으면 봉투(KeywordsResponse)의 source로 폴백한다.
 pub fn merge_keywords(responses: &[KeywordsResponse]) -> Vec<KeywordRecord> {
     let mut out = Vec::new();
     for resp in responses {
         for kw in &resp.keywords {
+            let normalized_text =
+                if kw.normalized_text.is_empty() { kw.text.clone() } else { kw.normalized_text.clone() };
             out.push(KeywordRecord {
-                source: resp.source.clone(),
+                source: kw.source.clone().unwrap_or_else(|| resp.source.clone()),
                 text: kw.text.clone(),
-                normalized_text: kw.normalized_text.clone(),
+                normalized_text,
                 frequency: kw.frequency,
                 avg_emotion_score: kw.avg_emotion_score,
                 first_seen: parse_date(&kw.first_seen),
@@ -212,5 +216,41 @@ mod tests {
         assert!(merged[0].first_seen.is_some());
         assert_eq!(merged[1].source, SourceId::TxtBrain);
         assert!(merged[1].first_seen.is_none());
+    }
+
+    // 허브형 통합 응답(항목별 source, 봉투 source는 허브 자신)에서도 올바른 소스로 태깅되는지 검증
+    #[test]
+    fn merge_prefers_per_item_source_over_envelope() {
+        let hub: KeywordsResponse = serde_json::from_str(
+            r#"{"schema_version":"1.1","source":"txtspace-hub","keywords":[
+                {"keyword":"양자역학","normalized_text":"양자역학","frequency":2.0,"avg_emotion_score":0.45,"source":"txtdiary"},
+                {"keyword":"측정 문제","normalized_text":"측정문제","frequency":3.0,"avg_emotion_score":0.1,"source":"txtbrain"},
+                {"keyword":"observer effect","normalized_text":"observereffect","frequency":1.0,"avg_emotion_score":0.0,"source":"txtaimemory"}
+            ]}"#,
+        )
+        .unwrap();
+
+        let merged = merge_keywords(&[hub]);
+        assert_eq!(merged.len(), 3);
+        // 봉투 source("txtspace-hub"→Unknown)가 아니라 항목별 source로 태깅돼야 함
+        let sources: std::collections::BTreeSet<_> = merged.iter().map(|r| r.source.clone()).collect();
+        assert_eq!(
+            sources,
+            std::collections::BTreeSet::from([SourceId::TxtDiary, SourceId::TxtBrain, SourceId::TxtAiMemory])
+        );
+        assert!(!sources.contains(&SourceId::Unknown), "허브 자신의 source가 새어나오면 안 됨");
+    }
+
+    // normalized_text가 아예 없는 실제 사례(허브 응답 일부) — text로 폴백해야 파싱이 안 깨진다
+    #[test]
+    fn merge_backfills_missing_normalized_text() {
+        let resp: KeywordsResponse = serde_json::from_str(
+            r#"{"schema_version":"1.1","source":"txtbrain","keywords":[
+                {"keyword":"양자역학","frequency":1.0,"avg_emotion_score":0.0}]}"#,
+        )
+        .unwrap();
+        let merged = merge_keywords(&[resp]);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].normalized_text, "양자역학", "normalized_text 없으면 text로 폴백");
     }
 }

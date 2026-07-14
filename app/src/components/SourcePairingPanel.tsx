@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import { api, SOURCE_IDS, SourceIdStr, SourceStatusDto } from "../api";
 import { useI18n } from "../lib/i18n";
 
+// 실측 포트(2026-07-14 확인). 각 앱의 실제 Keyword API 포트는 설정 화면에서 바뀔 수 있으니
+// 어디까지나 기본값 — 소스 목록의 "지금 동기화"로 실제 연결 여부를 바로 확인할 수 있다.
 const DEFAULT_PORTS: Record<SourceIdStr, string> = {
-  txtdiary: "http://127.0.0.1:4001",
-  txtbrain: "http://127.0.0.1:4002",
-  txtaimemory: "http://127.0.0.1:4003",
+  txtdiary: "http://127.0.0.1:47821",
+  txtbrain: "http://127.0.0.1:8811",
+  txtaimemory: "http://127.0.0.1:47531",
+  "txtspace-hub": "http://127.0.0.1:47540",
 };
 
 interface Props {
@@ -106,11 +109,15 @@ export function SourcePairingPanel({ onToast, onChanged }: Props) {
             <input id="pair-url" type="url" value={form.baseUrl} onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))} required />
           </div>
         </div>
-        <div>
-          <label htmlFor="pair-token">{t("source.tokenLabel")}</label>
-          <input id="pair-token" type="password" value={form.token} onChange={(e) => setForm((f) => ({ ...f, token: e.target.value }))} />
-          <p className="field-hint">{t("source.tokenHint")}</p>
-        </div>
+        {form.source === "txtspace-hub" ? (
+          <p className="field-hint">{t("source.hubHint")}</p>
+        ) : (
+          <div>
+            <label htmlFor="pair-token">{t("source.tokenLabel")}</label>
+            <input id="pair-token" type="password" value={form.token} onChange={(e) => setForm((f) => ({ ...f, token: e.target.value }))} />
+            <p className="field-hint">{t("source.tokenHint")}</p>
+          </div>
+        )}
         <div className="row">
           <button type="submit" className="primary">
             {t("source.save")}

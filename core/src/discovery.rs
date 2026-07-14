@@ -68,7 +68,8 @@ pub struct KeywordRecord {
     pub source: SourceId,
     pub text: String,
     pub normalized_text: String,
-    pub frequency: u64,
+    /// 실서비스 응답이 정수 아닌 부동소수 빈도(가중·감쇠 점수 등)를 보내는 경우가 있어 f64로 수용
+    pub frequency: f64,
     pub avg_emotion_score: f32,
     pub first_seen: Option<NaiveDate>,
     pub last_seen: Option<NaiveDate>,
@@ -168,12 +169,12 @@ pub fn temporal_overlap(
 }
 
 /// 빈도 신호 — 양쪽 다 유의미한 양인지: sqrt(min/max), 0빈도는 0
-pub fn frequency_signal(a: u64, b: u64) -> f32 {
-    if a == 0 || b == 0 {
+pub fn frequency_signal(a: f64, b: f64) -> f32 {
+    if a <= 0.0 || b <= 0.0 {
         return 0.0;
     }
     let (lo, hi) = if a < b { (a, b) } else { (b, a) };
-    ((lo as f32) / (hi as f32)).sqrt()
+    ((lo / hi) as f32).sqrt()
 }
 
 /// 3축 융합 스코어 (PRD §3.4.5) — 결정적
@@ -258,7 +259,7 @@ impl DiscoveryEngine {
         let mut out = Vec::new();
 
         for rec in records {
-            if rec.frequency < self.config.gap_min_freq {
+            if rec.frequency < self.config.gap_min_freq as f64 {
                 continue;
             }
             let key = rec.key();
@@ -318,7 +319,12 @@ impl DiscoveryEngine {
             records.iter().map(|r| (r.key(), r)).collect();
         // 빈도 내림차순 시드 순서(동률은 키 순) → 결정적
         let mut seeds: Vec<&KeywordRecord> = records.iter().collect();
-        seeds.sort_by(|a, b| b.frequency.cmp(&a.frequency).then_with(|| a.key().cmp(&b.key())));
+        seeds.sort_by(|a, b| {
+            b.frequency
+                .partial_cmp(&a.frequency)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.key().cmp(&b.key()))
+        });
 
         let mut assigned: BTreeSet<VecKey> = BTreeSet::new();
         let mut out = Vec::new();
@@ -443,7 +449,7 @@ mod tests {
             source,
             text: text.into(),
             normalized_text: text.replace(' ', "").to_lowercase(),
-            frequency: freq,
+            frequency: freq as f64,
             avg_emotion_score: 0.0,
             first_seen: NaiveDate::parse_from_str(from, "%Y-%m-%d").ok(),
             last_seen: NaiveDate::parse_from_str(to, "%Y-%m-%d").ok(),
@@ -472,8 +478,8 @@ mod tests {
         // 겹침 없음
         assert_eq!(temporal_overlap(d("2026-01-01"), d("2026-01-31"), d("2026-03-01"), d("2026-03-31")), 0.0);
         // 빈도 신호
-        assert!((frequency_signal(4, 16) - 0.5).abs() < 1e-6);
-        assert_eq!(frequency_signal(0, 10), 0.0);
+        assert!((frequency_signal(4.0, 16.0) - 0.5).abs() < 1e-6);
+        assert_eq!(frequency_signal(0.0, 10.0), 0.0);
         // 융합: 기본 가중치 0.6/0.2/0.2
         let w = FusionWeights::default();
         assert!((fusion_score(1.0, 1.0, 1.0, &w) - 1.0).abs() < 1e-6);
