@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "TXTMyWorld",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "identifier": "com.svil.txtmyworld",
   "build": {
     "beforeDevCommand": "npm run dev",

@@ -100,12 +100,16 @@ impl VectorStore for SqliteVecStore {
         Ok(())
     }
 
-    fn get(&self, key: &VecKey) -> Option<&Vec<f32>> {
-        // sqlite-vec는 결과를 매 질의마다 조회하는 구조라 참조 반환이 불가능하다.
-        // VectorStore 트레이트의 &Vec<f32> 계약은 인메모리 구현 전용이며, sqlite-vec 사용 시엔
-        // get_owned()를 쓴다 (discovery 엔진은 knn()만 사용하므로 실사용에 영향 없음).
-        let _ = key;
-        None
+    fn get(&self, key: &VecKey) -> Option<Vec<f32>> {
+        // vec_items에서 rowid로 저장된 임베딩 블롭을 읽어 f32 벡터로 복원한다.
+        // (discovery 엔진이 시드 벡터를 get()으로 가져오므로 반드시 실제 값을 반환해야 한다 —
+        //  예전 None 스텁은 모든 발견을 조용히 skip시키는 버그였다.)
+        let rowid = self.key_rowid(key).ok().flatten()?;
+        let blob: Vec<u8> = self
+            .conn
+            .query_row("SELECT embedding FROM vec_items WHERE rowid=?1", rusqlite::params![rowid], |r| r.get(0))
+            .ok()?;
+        Some(blob.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())
     }
 
     fn knn(&self, query: &[f32], k: usize, exclude: Option<&VecKey>) -> Result<Vec<(VecKey, f32)>> {
@@ -212,5 +216,44 @@ mod tests {
         let mut store = SqliteVecStore::open_in_memory(4).unwrap();
         let err = store.upsert(VecKey::new(SourceId::TxtDiary, "a"), vec![1.0, 0.0]).unwrap_err();
         assert!(matches!(err, CoreError::DimMismatch { .. }));
+    }
+
+    // get()이 저장한 벡터를 실제로 복원하는지 검증 — 예전 None 스텁은 discovery 엔진이 시드 벡터를
+    // 못 가져와 모든 발견을 조용히 skip시키는 프로덕션 버그였다(2026-07-14).
+    #[test]
+    fn get_returns_stored_vector() {
+        let mut store = SqliteVecStore::open_in_memory(4).unwrap();
+        let k = VecKey::new(SourceId::TxtDiary, "a");
+        let v = l2_normalize(&[1.0, 2.0, 3.0, 4.0]);
+        store.upsert(k.clone(), v.clone()).unwrap();
+
+        let got = store.get(&k).expect("get()이 None을 반환하면 안 됨");
+        assert_eq!(got.len(), 4);
+        for (a, b) in got.iter().zip(&v) {
+            assert!((a - b).abs() < 1e-6, "복원된 벡터가 저장값과 같아야 함");
+        }
+        assert!(store.get(&VecKey::new(SourceId::TxtBrain, "none")).is_none());
+    }
+
+    // SqliteVecStore를 실제 저장소로 쓴 발견 엔진 E2E — get() 버그가 있으면 여기서 브리지 0건으로 실패.
+    #[test]
+    fn discovery_engine_works_with_sqlite_store() {
+        use crate::discovery::{DiscoveryConfig, DiscoveryEngine, KeywordRecord};
+        use crate::vector::VectorStore;
+
+        let recs = vec![
+            KeywordRecord { source: SourceId::TxtDiary, text: "관측자".into(), normalized_text: "관측자".into(), frequency: 5.0, avg_emotion_score: 0.0, first_seen: None, last_seen: None },
+            KeywordRecord { source: SourceId::TxtBrain, text: "관측자".into(), normalized_text: "관측자".into(), frequency: 4.0, avg_emotion_score: 0.0, first_seen: None, last_seen: None },
+        ];
+        // 동일 키워드 → 동일 벡터(유사도 1.0)로 색인
+        let mut store = SqliteVecStore::open_in_memory(4).unwrap();
+        let v = l2_normalize(&[1.0, 1.0, 0.0, 0.0]);
+        store.upsert(recs[0].key(), v.clone()).unwrap();
+        store.upsert(recs[1].key(), v.clone()).unwrap();
+
+        let engine = DiscoveryEngine::new(DiscoveryConfig { bridge_sim_cut: 0.8, ..Default::default() });
+        let store_ref: &dyn VectorStore = &store;
+        let bridges = engine.detect_bridges(&recs, store_ref).unwrap();
+        assert!(!bridges.is_empty(), "SqliteVecStore로도 교차소스 브리지를 찾아야 함(get 버그 회귀 방지)");
     }
 }

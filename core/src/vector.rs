@@ -69,8 +69,8 @@ pub fn cosine(a: &[f32], b: &[f32]) -> Result<f32> {
 pub trait VectorStore {
     /// 벡터 upsert (dim 불일치는 오류 반환 — 레코드 스킵 정책은 호출측에서)
     fn upsert(&mut self, key: VecKey, vector: Vec<f32>) -> Result<()>;
-    /// 키의 벡터 조회
-    fn get(&self, key: &VecKey) -> Option<&Vec<f32>>;
+    /// 키의 벡터 조회(소유값). sqlite-vec처럼 참조를 못 주는 구현도 있으므로 owned로 반환한다.
+    fn get(&self, key: &VecKey) -> Option<Vec<f32>>;
     /// top-k 최근접 이웃 (자기 자신 제외, 유사도 내림차순)
     fn knn(&self, query: &[f32], k: usize, exclude: Option<&VecKey>) -> Result<Vec<(VecKey, f32)>>;
     /// 저장된 모든 키 (결정적 순서)
@@ -110,8 +110,8 @@ impl VectorStore for InMemoryVectorStore {
         Ok(())
     }
 
-    fn get(&self, key: &VecKey) -> Option<&Vec<f32>> {
-        self.map.get(key)
+    fn get(&self, key: &VecKey) -> Option<Vec<f32>> {
+        self.map.get(key).cloned()
     }
 
     fn knn(&self, query: &[f32], k: usize, exclude: Option<&VecKey>) -> Result<Vec<(VecKey, f32)>> {

@@ -22,7 +22,7 @@ pub mod vector;
 pub mod vector_sqlite;
 
 /// 앱 버전 단일 소스(루트 VERSION 파일과 동기 유지)
-pub const APP_VERSION: &str = "0.2.2";
+pub const APP_VERSION: &str = "0.2.3";
 
 /// 버전 히스토리 (버전, 날짜, 요약) — UI 설정의 "업데이트 히스토리" 메뉴가 이 목록을 렌더링한다.
 /// 최신 버전이 배열 끝에 오도록 유지한다(화면에서는 최신순으로 뒤집어 표시).
@@ -54,6 +54,16 @@ pub const VERSION_HISTORY: &[(&str, &str, &str)] = &[
          발급받은 공유 페어링 토큰(Windows 자격 증명, 서비스명 TXTSpace)을 자동 재사용하므로 토큰 입력 없이 연결된다. \
          소스별 인증 헤더(TXTAIMemory=X-Pairing-Token, 나머지=Bearer)와 TXTAIMemory items 스키마(keyword/weight/ai_id) \
          수용, \"3개 앱에 지금 연결\" 원클릭 버튼 추가. 소스 앱은 전혀 수정하지 않고 TXTMyWorld만 확장.",
+    ),
+    (
+        "0.2.3",
+        "2026-07-14",
+        "발견이 항상 0건이던 치명 버그 2건 수정 — (1) SqliteVecStore::get()이 항상 None을 반환하는 스텁이라 \
+         실제 앱의 발견 엔진이 시드 벡터를 못 가져와 모든 발견을 조용히 skip했다(인메모리 저장소는 정상이라 유닛 \
+         테스트가 못 잡음). 실제 벡터를 복원하도록 수정하고 SqliteVecStore E2E 회귀 테스트 추가. (2) 임베더가 \
+         Ollama 가동만 확인하고 bge-m3 미설치 시에도 그걸로 시도해 임베딩이 전부 실패했다 — /api/tags로 실제 설치된 \
+         임베딩 모델(nomic-embed-text 등)을 감지·선택하고 실패 시 해시 폴백. 의미 임베딩에 맞춰 발견 임계값 상향 \
+         (0.6→0.85). 실측: 195키워드/3소스 → 발견 98건(브리지 69·갭 19·클러스터 10).",
     ),
 ];
 

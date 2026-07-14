@@ -50,10 +50,14 @@ impl Default for DiscoveryConfig {
     fn default() -> Self {
         Self {
             weights: FusionWeights::default(),
-            bridge_sim_cut: 0.6,
+            // 실제 의미 임베딩(nomic/bge-m3 등)은 서로 다른 키워드 사이에서도 기본 코사인 유사도가
+            // 높게 나온다(실측 중앙값 ≈ 0.82). 0.6 컷은 수백 건의 노이즈를 만든다 — 실데이터 분포에
+            // 맞춰 0.85로 상향(실측: 195키워드/3소스에서 브리지 ~69, 클러스터 ~6, 갭 ~19 = 약 90건).
+            // 사용자는 설정 화면에서 다시 조절할 수 있다.
+            bridge_sim_cut: 0.85,
             gap_sim_cut: 0.5,
             gap_min_freq: 3,
-            cluster_sim_cut: 0.7,
+            cluster_sim_cut: 0.85,
             cluster_min_size: 3,
             drift_min_delta: 0.4,
             knn_k: 10,
@@ -207,7 +211,7 @@ impl DiscoveryEngine {
         for rec in records {
             let key = rec.key();
             let Some(vec) = store.get(&key) else { continue };
-            let neighbors = store.knn(vec, self.config.knn_k, Some(&key))?;
+            let neighbors = store.knn(&vec, self.config.knn_k, Some(&key))?;
             for (nkey, sim) in neighbors {
                 if nkey.source == rec.source || sim < self.config.bridge_sim_cut {
                     continue;
@@ -264,7 +268,7 @@ impl DiscoveryEngine {
             }
             let key = rec.key();
             let Some(vec) = store.get(&key) else { continue };
-            let neighbors = store.knn(vec, store.len(), Some(&key))?;
+            let neighbors = store.knn(&vec, store.len(), Some(&key))?;
             for target in &present_sources {
                 if *target == rec.source {
                     continue;
@@ -335,7 +339,7 @@ impl DiscoveryEngine {
                 continue;
             }
             let Some(seed_vec) = store.get(&seed_key) else { continue };
-            let neighbors = store.knn(seed_vec, store.len(), Some(&seed_key))?;
+            let neighbors = store.knn(&seed_vec, store.len(), Some(&seed_key))?;
 
             let mut members: Vec<&KeywordRecord> = vec![seed];
             let mut sims: Vec<f32> = Vec::new();

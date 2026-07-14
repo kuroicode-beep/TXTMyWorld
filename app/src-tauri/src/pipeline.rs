@@ -12,7 +12,18 @@ use txtmyworld_core::vector::{VecKey, VectorSpace, VectorStore};
 use txtmyworld_core::vector_sqlite::SqliteVecStore;
 
 use crate::dto::{DiscoveryRunSummaryDto, SyncResultDto};
-use crate::embed_select::{local_space, select_embedder, EMBED_DIM};
+use crate::embed_select::{local_space_for, select_embedder, SelectedEmbedder, EMBED_DIM};
+use txtmyworld_core::embedding::HashEmbedder;
+
+/// 실 임베딩 모델 실패 시 쓰는 해시 폴백 임베더 (항상 동작, 차원 EMBED_DIM).
+fn fallback_hash_embedder() -> SelectedEmbedder {
+    SelectedEmbedder {
+        embedder: Box::new(HashEmbedder::new(EMBED_DIM)),
+        is_real_model: false,
+        model_name: "hash-fallback".into(),
+        dim: EMBED_DIM,
+    }
+}
 use crate::secure;
 
 /// 소스별 인증 헤더 스킴 (TXTSpace hub adapters.rs와 동일 규약):
@@ -112,7 +123,9 @@ pub fn sync_source(store: &Store, source_name: &str, base_url: &str) -> SyncResu
                 dim: cap.dim.unwrap_or(0),
                 normalized: cap.normalized.unwrap_or(false),
             };
-            if source_space.is_compatible(&local_space()) {
+            // 우리가 선호하는 공간(bge-m3/1024)과 일치할 때만 소스 공유 벡터를 그대로 받는다.
+            // 불일치하면 저장하지 않고 discovery 단계의 로컬 재임베딩(전략 B)에 맡긴다.
+            if source_space.is_compatible(&local_space_for("bge-m3", EMBED_DIM)) {
                 let mut cursor: Option<String> = None;
                 while let Ok(SourceFetch::Ok(resp)) = fetch_vectors(&cfg, None, cursor.as_deref()) {
                     for v in &resp.vectors {
@@ -158,13 +171,14 @@ pub fn connect_all_direct(store: &Store) -> Vec<SyncResultDto> {
 /// 발견 파이프라인: 캐시된 키워드 로드 → (미보유분) 임베딩 → sqlite-vec 인메모리 색인 → 3유형 발견 → 영속화
 pub fn run_discovery(store: &Store, config: DiscoveryConfig, ollama_base_url: &str) -> DiscoveryRunSummaryDto {
     let records: Vec<KeywordRecord> = store.list_keyword_cache().unwrap_or_default();
-    let selected = select_embedder(ollama_base_url);
-    let model_name = selected.model_name.clone();
+    let mut selected = select_embedder(ollama_base_url);
+    let mut model_name = selected.model_name.clone();
+    let mut dim = selected.dim;
 
-    let mut vec_store = SqliteVecStore::open_in_memory(EMBED_DIM).expect("sqlite-vec 인메모리 저장소 생성 실패");
+    let mut vec_store = SqliteVecStore::open_in_memory(dim).expect("sqlite-vec 인메모리 저장소 생성 실패");
 
     let mut embedded_count = 0usize;
-    // 미보유 임베딩만 배치로 계산 (증분) — 이미 shared/local 임베딩이 있으면 재사용.
+    // 미보유 임베딩만 배치로 계산 (증분) — 이미 같은 모델 임베딩이 있으면 재사용.
     // pending_* 세 벡터는 반드시 같은 인덱스로 짝지어야 하므로 레코드 참조도 함께 모은다.
     let mut pending_texts: Vec<String> = Vec::new();
     let mut pending_keys: Vec<VecKey> = Vec::new();
@@ -173,7 +187,7 @@ pub fn run_discovery(store: &Store, config: DiscoveryConfig, ollama_base_url: &s
     for rec in &records {
         let key = rec.key();
         if let Ok(Some(v)) = store.get_embedding(rec.source.as_str(), &rec.normalized_text, &model_name) {
-            if v.len() == EMBED_DIM {
+            if v.len() == dim {
                 let _ = vec_store.upsert(key, v);
                 continue;
             }
@@ -184,12 +198,26 @@ pub fn run_discovery(store: &Store, config: DiscoveryConfig, ollama_base_url: &s
     }
 
     if !pending_texts.is_empty() {
-        if let Ok(vectors) = selected.embedder.embed(&pending_texts) {
-            for ((key, vec), rec) in pending_keys.into_iter().zip(vectors).zip(pending_records) {
-                let _ = store.upsert_embedding(rec.source.as_str(), &rec.normalized_text, "local", &model_name, &vec);
-                let _ = vec_store.upsert(key, vec);
-                embedded_count += 1;
+        // 선택한 실제 모델(Ollama)로 임베딩 시도. 실패하면(모델 오류 등) 해시 폴백으로 전환해
+        // 발견이 0건이 되는 것을 막는다 — 차원이 바뀌므로 벡터 저장소를 재생성하고 전량 재임베딩한다.
+        let vectors = match selected.embedder.embed(&pending_texts) {
+            Ok(v) => v,
+            Err(_) => {
+                selected = fallback_hash_embedder();
+                model_name = selected.model_name.clone();
+                dim = selected.dim;
+                vec_store = SqliteVecStore::open_in_memory(dim).expect("sqlite-vec 재생성 실패");
+                // 폴백 시엔 전량 재임베딩 (앞서 캐시로 채운 것도 차원이 다르므로 무효)
+                pending_texts = records.iter().map(|r| r.text.clone()).collect();
+                pending_keys = records.iter().map(|r| r.key()).collect();
+                pending_records = records.iter().collect();
+                selected.embedder.embed(&pending_texts).unwrap_or_default()
             }
+        };
+        for ((key, vec), rec) in pending_keys.into_iter().zip(vectors).zip(pending_records) {
+            let _ = store.upsert_embedding(rec.source.as_str(), &rec.normalized_text, "local", &model_name, &vec);
+            let _ = vec_store.upsert(key, vec);
+            embedded_count += 1;
         }
     }
 

@@ -375,6 +375,6 @@ pub fn get_embedder_status(state: State<AppState>) -> Result<serde_json::Value, 
     Ok(serde_json::json!({
         "model": selected.model_name,
         "is_real_model": selected.is_real_model,
-        "dim": embed_select::EMBED_DIM,
+        "dim": selected.dim,
     }))
 }
