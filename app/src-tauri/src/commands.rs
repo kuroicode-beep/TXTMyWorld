@@ -286,7 +286,8 @@ pub fn send_feedback(state: State<AppState>, card_id: String) -> Result<crate::d
         .flatten()
         .and_then(|v| v.as_str().map(String::from))
         .unwrap_or_else(|| DEFAULT_ENDPOINT.to_string());
-    let transport = HttpFeedbackTransport { endpoint };
+    let token = secure::resolve_token("txtaimemory").map(|(t, _shared)| t);
+    let transport = HttpFeedbackTransport { endpoint, token };
 
     match transport.send(&payload) {
         Ok(ack) => {

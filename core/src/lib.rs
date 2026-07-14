@@ -22,7 +22,7 @@ pub mod vector;
 pub mod vector_sqlite;
 
 /// 앱 버전 단일 소스(루트 VERSION 파일과 동기 유지)
-pub const APP_VERSION: &str = "0.2.5";
+pub const APP_VERSION: &str = "0.2.6";
 
 /// 버전 히스토리 (버전, 날짜, 요약) — UI 설정의 "업데이트 히스토리" 메뉴가 이 목록을 렌더링한다.
 /// 최신 버전이 배열 끝에 오도록 유지한다(화면에서는 최신순으로 뒤집어 표시).
@@ -80,6 +80,15 @@ pub const VERSION_HISTORY: &[(&str, &str, &str)] = &[
          TXTDiary·TXTBrain·TXTAIMemory 3소스가 방금 /vectors를 제공하기 시작했는데도 이 하드코딩 때문에 \
          전부 \"불일치\"로 판정되어 조용히 버려지고 있었음. select_embedder()로 실제 로컬 모델을 조회해 \
          비교하도록 수정 — 이제 실제로 소스 공유 벡터를 받아 저장한다(전략 A).",
+    ),
+    (
+        "0.2.6",
+        "2026-07-15",
+        "X2 환류가 존재하지 않는 포트(127.0.0.1:8765)로 보내고 있어 실제로는 한 번도 성공한 적이 \
+         없었던 문제 수정 — TXTAIMemory의 실제 control API(127.0.0.1:47530/write)로 교체하고, \
+         페이로드를 그 계약(content/source/summary/origin_app/external_id)에 맞게 변환하도록 \
+         구현. 페어링 토큰 자동 첨부(공유 토큰 재사용), external_id로 같은 발견 재환류 시 \
+         원장이 중복 누적되지 않음(TXTAIMemory 쪽 멱등 upsert와 짝).",
     ),
 ];
 
