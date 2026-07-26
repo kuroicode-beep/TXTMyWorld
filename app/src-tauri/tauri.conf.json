@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "TXTMyWorld v0.2.0",
+        "title": "TXTMyWorld",
         "width": 1280,
         "height": 860,
         "minWidth": 900,
