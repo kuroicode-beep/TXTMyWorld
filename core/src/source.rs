@@ -133,10 +133,18 @@ pub fn merge_keywords(responses: &[KeywordsResponse]) -> Vec<KeywordRecord> {
     out
 }
 
+/// 엔드포인트별 응답 상한. ureq 2.x는 **전체 타임아웃 기본값이 없어**, 소스가 연결만 받고
+/// 응답하지 않으면 무한 대기한다 — 호출측(sync_source)이 store 뮤텍스를 쥔 채 도는 구조라
+/// 그대로 두면 소스 하나가 멈출 때 앱 전체가 잠긴다. 그래서 반드시 상한을 건다.
+/// `/vectors`는 소스가 키워드 N개를 그 자리에서 임베딩하느라 오래 걸릴 수 있어 넉넉히 준다.
+const TIMEOUT_HEALTH: std::time::Duration = std::time::Duration::from_secs(5);
+const TIMEOUT_KEYWORDS: std::time::Duration = std::time::Duration::from_secs(20);
+const TIMEOUT_VECTORS: std::time::Duration = std::time::Duration::from_secs(90);
+
 /// HTTP GET — read-only 원칙의 유일한 메서드. 실패는 Offline으로 격리
-fn http_get(config: &SourceConfig, path: &str) -> SourceFetch<String> {
+fn http_get(config: &SourceConfig, path: &str, timeout: std::time::Duration) -> SourceFetch<String> {
     let url = format!("{}{}", config.base_url, path);
-    let mut req = ureq::get(&url);
+    let mut req = ureq::get(&url).timeout(timeout);
     if let Some(token) = &config.pairing_token {
         req = match config.auth_header {
             AuthHeader::Bearer => req.set("Authorization", &format!("Bearer {token}")),
@@ -154,7 +162,7 @@ fn http_get(config: &SourceConfig, path: &str) -> SourceFetch<String> {
 
 /// GET /health — 소스 상태·벡터 능력 확인
 pub fn fetch_health(config: &SourceConfig) -> Result<SourceFetch<HealthResponse>> {
-    match http_get(config, "/health") {
+    match http_get(config, "/health", TIMEOUT_HEALTH) {
         SourceFetch::Ok(body) => parse_health(&body),
         SourceFetch::Offline(e) => Ok(SourceFetch::Offline(e)),
         SourceFetch::UpdateRequired => unreachable!(),
@@ -164,7 +172,7 @@ pub fn fetch_health(config: &SourceConfig) -> Result<SourceFetch<HealthResponse>
 /// GET /keywords — 키워드 통합 조회 (쿼리는 호출측 조립)
 pub fn fetch_keywords(config: &SourceConfig, query: &str) -> Result<SourceFetch<KeywordsResponse>> {
     let path = if query.is_empty() { "/keywords".to_string() } else { format!("/keywords?{query}") };
-    match http_get(config, &path) {
+    match http_get(config, &path, TIMEOUT_KEYWORDS) {
         SourceFetch::Ok(body) => parse_keywords(&body),
         SourceFetch::Offline(e) => Ok(SourceFetch::Offline(e)),
         SourceFetch::UpdateRequired => unreachable!(),
@@ -189,7 +197,7 @@ pub fn fetch_vectors(
     } else {
         format!("/vectors?{}", params.join("&"))
     };
-    match http_get(config, &path) {
+    match http_get(config, &path, TIMEOUT_VECTORS) {
         SourceFetch::Ok(body) => parse_vectors(&body),
         SourceFetch::Offline(e) => Ok(SourceFetch::Offline(e)),
         SourceFetch::UpdateRequired => unreachable!(),
