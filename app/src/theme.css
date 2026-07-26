@@ -86,8 +86,8 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  /* 글꼴은 설정에서 변경 가능(--app-font-family). 기본은 교보손글씨2019 */
-  font-family: var(--app-font-family, "KyoboHandwriting2019", "Pretendard", "Malgun Gothic", sans-serif);
+  /* 글꼴은 설정에서 변경 가능(--app-font-family). 기본은 라인시드(SVIL 가이드 §2.1) */
+  font-family: var(--app-font-family, "LINE Seed Sans KR", "Pretendard", "Malgun Gothic", sans-serif);
   line-height: 1.8;
   letter-spacing: 0.02em;
   word-break: keep-all;

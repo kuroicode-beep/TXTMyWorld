@@ -28,15 +28,20 @@ export const FONT_FAMILY_OPTIONS: Array<{
   css: string;
   isDefault?: boolean;
 }> = [
+  // 순서·기본값은 SVIL 디자인 가이드 §2.1을 따른다 — 라인시드가 기본.
+  {
+    id: "line-seed",
+    label: "라인시드체",
+    css: "'LINE Seed Sans KR', 'Pretendard', 'Malgun Gothic', sans-serif",
+    isDefault: true,
+  },
   {
     id: "kyobo-handwriting-2019",
     label: "교보손글씨2019",
     css: "'KyoboHandwriting2019', 'Pretendard', 'Malgun Gothic', sans-serif",
-    isDefault: true,
   },
   { id: "gothic", label: "고딕", css: "'Pretendard', 'Malgun Gothic', sans-serif" },
   { id: "nanum-gothic", label: "나눔고딕", css: "'NanumGothic', 'Malgun Gothic', sans-serif" },
-  { id: "line-seed", label: "라인시드체", css: "'LINE Seed Sans KR', 'Malgun Gothic', sans-serif" },
   { id: "gowun-dodum", label: "고운돋움체", css: "'Gowun Dodum', 'Malgun Gothic', sans-serif" },
   { id: "cafe24-dongdong", label: "카페24동동체", css: "'Cafe24Dongdong', 'Malgun Gothic', sans-serif" },
   { id: "tmoney-round", label: "티머니둥근바람체", css: "'TmoneyRoundWind', 'Malgun Gothic', sans-serif" },
